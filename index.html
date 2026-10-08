@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jeremy Legal Records · Sovereign artists first.</title>
+<meta name="description" content="Jeremy Legal Records. Sovereign artists first. Tools for financial literacy and creative liberation, with no middleman.">
+<meta name="robots" content="noindex"><!-- preview build: remove at launch -->
+<link rel="icon" href="assets/jlr-header-logo.png">
+<style>
+@font-face{font-family:'Ibarra Real Nova';font-weight:600 700;font-display:swap;src:url(assets/fonts/IbarraRealNova-700.woff2) format('woff2')}
+@font-face{font-family:'Kode Mono';font-weight:400 700;font-display:swap;src:url(assets/fonts/KodeMono-600.woff2) format('woff2')}
+@font-face{font-family:'Wix Madefor Display';font-weight:400 800;font-display:swap;src:url(assets/fonts/WixMadeforDisplay-400.woff2) format('woff2')}
+:root{--bg:#0c0a08;--ink:#fff;--mute:rgba(255,255,255,.68);--line:rgba(255,255,255,.14);--amber:#d9a45b;--card:#15120e}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 .95rem/1.85 'Wix Madefor Display',system-ui,sans-serif;letter-spacing:.025em;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+img{display:block;max-width:100%}
+.wrap{width:min(1180px,100% - 2.5rem);margin-inline:auto}
+.mono{font-family:'Kode Mono',ui-monospace,monospace;font-weight:600;text-transform:uppercase;letter-spacing:.275em;font-size:.72rem}
+.serif{font-family:'Ibarra Real Nova',Georgia,serif;font-weight:700;letter-spacing:.05em}
+.need{font-family:'Kode Mono',monospace;font-size:.7rem;letter-spacing:.06em;color:var(--amber);border:1px dashed var(--amber);border-radius:4px;padding:.05rem .4rem;white-space:normal}
+/* header */
+.top{position:sticky;top:0;z-index:20;background:rgba(12,10,8,.82);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;gap:1rem;height:64px}
+.brand{display:flex;align-items:center;gap:.6rem;text-decoration:none;margin-right:auto;min-width:0}
+.brand img{height:40px;width:auto}
+.brand span{font-size:1.02rem;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;gap:.6rem;border-radius:999px;padding:.85rem 1.4rem;text-decoration:none;border:1px solid var(--ink);background:transparent;color:var(--ink);cursor:pointer;white-space:nowrap}
+.btn.solid{background:var(--ink);color:#000}
+.btn.sm{padding:.5rem .95rem;font-size:.66rem}
+/* hero */
+.hero{position:relative;min-height:calc(100svh - 64px);display:flex;align-items:flex-end;overflow:hidden;isolation:isolate}
+.hero picture,.hero picture img{position:absolute;inset:0;width:100%;height:100%}
+.hero picture img{object-fit:cover;object-position:52% 18%;z-index:-2}
+.hero::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(12,10,8,0) 30%,rgba(12,10,8,.72) 62%,var(--bg) 96%)}
+.hero .wrap{padding-block:3rem 3.5rem}
+.eyebrow{color:var(--mute)}
+.wordmark{font-size:clamp(2.1rem,7.5vw,3.5rem);line-height:1.02;margin:.5rem 0 .2rem}
+.hero h1{font-weight:500;line-height:1.3;font-size:clamp(1.25rem,3.6vw,1.8rem);margin:.3rem 0 .6rem;letter-spacing:.01em}
+.hero p.sub{max-width:34rem;color:var(--mute);margin:0 0 1.6rem}
+.ctas{display:flex;flex-wrap:wrap;gap:.75rem}
+/* sections */
+section{padding-block:clamp(3.5rem,8vw,6rem);border-top:1px solid var(--line)}
+.kicker{color:var(--amber);margin:0 0 1rem}
+blockquote{margin:0;max-width:52rem}
+blockquote p{font-family:'Ibarra Real Nova',Georgia,serif;font-weight:600;font-size:clamp(1.3rem,3.2vw,2rem);line-height:1.45;letter-spacing:.01em;margin:0 0 1.2rem}
+blockquote cite{font-style:normal;color:var(--mute)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:1rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.4rem;display:flex;flex-direction:column;gap:.6rem;text-decoration:none;transition:border-color .2s}
+.card:hover{border-color:rgba(255,255,255,.45)}
+.card h3{margin:0;font-family:'Ibarra Real Nova',Georgia,serif;font-size:1.35rem;letter-spacing:.03em}
+.card p{margin:0;color:var(--mute);font-size:.9rem;line-height:1.7;flex:1}
+.tag{align-self:flex-start;font-size:.6rem;border:1px solid var(--line);border-radius:999px;padding:.2rem .6rem}
+.tag.beta{border-color:var(--amber);color:var(--amber)}
+.go{font-size:.66rem;opacity:.8}
+.artist{display:grid;grid-template-columns:1.05fr 1fr;gap:clamp(1.5rem,4vw,3.5rem);align-items:start}
+.artist figure{margin:0;border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+.artist figure img{aspect-ratio:4/3;object-fit:cover;object-position:55% 30%;width:100%}
+.artist h2{font-size:clamp(2rem,5vw,3rem);margin:0 0 .6rem;line-height:1}
+.artist p{margin:0 0 1rem;color:var(--mute)}
+.artist p strong{color:var(--ink);font-weight:600}
+.socials{display:flex;flex-wrap:wrap;gap:.5rem;margin:1.2rem 0}
+.socials a{text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:.35rem .8rem;font-size:.62rem}
+.villain{border-left:2px solid var(--amber);padding:.2rem 0 .2rem 1rem;margin:1.4rem 0}
+.villain p{margin:0 0 .4rem}
+.press{margin-top:2.5rem}
+.press ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:.6rem}
+.press li a{display:block;text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:.6rem .85rem;font-size:.82rem;line-height:1.45}
+.press li a b{display:block;font-weight:700;color:var(--ink)}
+.press li a span{color:var(--mute)}
+.credit{font-size:.8rem;color:var(--mute);margin-top:1.4rem}
+.proof{display:flex;flex-wrap:wrap;gap:.6rem 1.8rem;align-items:center;justify-content:center;padding-block:1.6rem;color:var(--mute)}
+.proof a{text-decoration:none}
+.proof a:hover{color:var(--ink)}
+.cta{text-align:center}
+.cta h2{font-size:clamp(2rem,5.5vw,3.2rem);margin:0 0 .4rem;line-height:1.1}
+.cta p{color:var(--mute);margin:0 0 1.8rem}
+.intel{margin:2.6rem auto 0;max-width:30rem;display:flex;gap:.5rem;border:1px solid var(--line);border-radius:999px;padding:.35rem}
+.intel input{flex:1;min-width:0;background:transparent;border:0;color:var(--ink);font:inherit;font-size:16px;padding:.5rem 1rem;outline:none}
+.intel input::placeholder{color:rgba(255,255,255,.45)}
+.intel-note{font-size:.72rem;color:var(--mute);margin-top:.8rem}
+footer{border-top:1px solid var(--line);padding-block:2rem;font-size:.78rem;color:var(--mute)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:.4rem 1.4rem;justify-content:space-between}
+footer a{text-decoration:none}
+/* desktop hero: Jeremy to the right, copy left */
+@media (min-width:900px){
+  .hero picture{left:auto;width:64%}
+  .hero picture img{object-position:50% 22%}
+  .hero::after{background:linear-gradient(90deg,var(--bg) 36%,rgba(12,10,8,.55) 52%,rgba(12,10,8,0) 72%),linear-gradient(180deg,rgba(12,10,8,0) 70%,var(--bg) 100%)}
+  .hero{align-items:center}
+  .hero .wrap{padding-block:4rem}
+  .hero-copy{max-width:36rem}
+}
+@media (max-width:899px){
+  .brand span{font-size:.82rem;letter-spacing:.03em}
+  .brand img{height:34px}
+  .artist{grid-template-columns:1fr}
+  .top .wrap{gap:.5rem}
+}
+@media (max-width:560px){
+  .brand span{display:none}
+  .hero .wrap{padding-block:2rem 2.4rem}
+  .btn{padding:.8rem 1.15rem}
+}
+.card{padding:1.8rem;min-height:230px}
+.card h3{font-size:1.6rem}
+.card p{font-size:1rem;color:var(--ink);opacity:.82}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;margin-bottom:1.4rem;flex-wrap:wrap}
+.section-head h2{margin:0;font-size:clamp(1.8rem,4.5vw,2.6rem);line-height:1.1}
+.section-head p{margin:0;color:var(--mute);max-width:28rem}
+.hero .chop{color:var(--mute);margin:1.4rem 0 0;font-size:.64rem}
+.intel-sec{text-align:center}
+.intel-sec h2{font-size:clamp(1.8rem,4.5vw,2.6rem);margin:0 0 .4rem;line-height:1.1}
+.intel-sec p.lead{color:var(--mute);margin:0 auto;max-width:30rem}
+.intel{margin-top:1.8rem}
+.roster{padding-block:clamp(2.5rem,6vw,3.5rem)}
+.roster-row{display:grid;grid-template-columns:1.3fr 1fr;gap:1.2rem 3rem;align-items:end}
+.roster h2{font-size:clamp(1.6rem,4vw,2.2rem);margin:0 0 .4rem;line-height:1}
+.roster p{margin:0;color:var(--mute)}
+.heard{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:.5rem;font-size:.6rem;justify-content:flex-end}
+.heard a{display:block;text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:.35rem .8rem}
+.heard a:hover{border-color:rgba(255,255,255,.45)}
+.mission blockquote{border-left:2px solid var(--amber);padding-left:clamp(1rem,3vw,2rem)}
+@media (max-width:899px){.roster-row{grid-template-columns:1fr}.heard{justify-content:flex-start}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Jeremy Legal Records home">
+      <img src="assets/jlr-header-logo.png" alt="" width="107" height="160">
+      <span class="serif">JEREMY LEGAL RECORDS</span>
+    </a>
+    <a class="btn solid sm mono" href="/royalty-dashboard/">Royalty Dashboard</a>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <picture>
+      <source media="(min-width:900px)" srcset="assets/jeremy-hero-2000.jpg">
+      <img src="assets/jeremy-hero-1000.jpg" alt="Jeremy Legal in a grey waistcoat holding a cigar beside a gilded mantel clock">
+    </picture>
+    <div class="wrap">
+      <div class="hero-copy">
+        <div class="eyebrow mono">Sovereign · Forward thinking · Artist-first</div>
+        <div class="wordmark serif">JEREMY LEGAL RECORDS</div>
+        <h1>Sound money for the sound makers.</h1>
+        <p class="sub">An independent label building financial literacy tools for sovereign artists. Creative liberation, no middleman. Your music. Your numbers. Your call.</p>
+        <div class="ctas">
+          <a class="btn solid mono" href="/royalty-dashboard/">→ Royalty Dashboard</a>
+          <a class="btn mono" href="#intel">→ Get Intel</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section id="developments">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 class="serif">Developments</h2>
+        <p>What the label is building right now.</p>
+      </div>
+      <!-- Add a project: copy one <a class="card"> block. Tag options: Beta / Live / Soon. The grid wraps on its own. -->
+      <div class="cards">
+        <a class="card" href="/royalty-dashboard/">
+          <span class="tag beta mono">Beta</span>
+          <h3>Royalty Dashboard</h3>
+          <p>Messy statements in. Clean royalties out.</p>
+          <span class="go mono">Open →</span>
+        </a>
+        <a class="card" href="https://bitcoinslang.com">
+          <span class="tag mono">Live</span>
+          <h3>Bitcoin Slang</h3>
+          <p>Learn sound money fundamentals via rap lyrics.</p>
+          <span class="go mono">Visit →</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section id="robbie-p" class="roster">
+    <div class="wrap">
+      <div class="roster-row">
+        <div>
+          <p class="kicker mono">On the roster</p>
+          <h2 class="serif">ROBBIE P</h2>
+          <p>Artist, lyricist and producer. Sound money, finance and raw personal reflection in street-level hip-hop. <a href="https://robbiep.net">robbiep.net →</a></p>
+        </div>
+        <ul class="heard mono" aria-label="As seen and heard">
+          <li><a href="https://proofofink.com/stackchain-magazine">Stackchain Magazine</a></li>
+          <li><a href="https://www.campnakamoto.com">Camp Nakamoto</a></li>
+          <li><a href="https://x.com/bitcoinalive">Bitcoin Alive</a></li>
+          <li><a href="https://play.fountain.fm/episode/qXiEuFHO5sNueQhAQRQd">Pleb Underground</a></li>
+        </ul>
+      </div>
+      <p class="credit">Tools built by <strong>ROBBIE P</strong> · <a href="https://github.com/maximini22">GitHub →</a> · <a href="https://instagram.com/robbiep808x">Instagram</a> · <a href="https://x.com/robbiep808x">X</a> · <a href="https://tiktok.com/@robbiep808x">TikTok</a> · <a href="https://www.youtube.com/@ROBBIEP">YouTube</a> · <a href="https://robbiep808x.bandcamp.com">Bandcamp</a></p>
+    </div>
+  </section>
+
+  <section class="intel-sec" id="intel">
+    <div class="wrap">
+      <p class="kicker mono">Get Intel</p>
+      <h2 class="serif">Intel from the label</h2>
+      <p class="lead">Label news, plus the demo CSV pack so you can try the Royalty Dashboard before your own statements land.</p>
+      <!-- Visual placeholder only. No form, no action, nothing is sent. Wire the Brevo embed here at launch. -->
+      <div class="intel" role="group" aria-label="Get Intel (coming soon)">
+        <input type="email" placeholder="your@email" aria-label="Email" autocomplete="off">
+        <button class="btn solid sm mono" type="button">→ Get Intel</button>
+      </div>
+      <p class="intel-note">You'll be in the ledger. <span class="need">Placeholder: signup not wired yet</span></p>
+    </div>
+  </section>
+
+  <section class="mission">
+    <div class="wrap">
+      <p class="kicker mono">The mission</p>
+      <blockquote>
+        <p>“Sovereign Artists role modelling sound money, financial ownership, and creative liberty. If it works, the whole industry copies us. If it doesn't, we tried first. Either way we're on the chopping block.”</p>
+        <cite class="mono">— Jeremy Legal</cite>
+      </blockquote>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div class="wrap">
+      <h2 class="serif">Got statements? Bring them.</h2>
+      <p>In your browser. Nothing uploaded.</p>
+      <a class="btn solid mono" href="/royalty-dashboard/">→ Open the Royalty Dashboard</a>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Jeremy Legal Records · <a href="mailto:team@jeremylegalrecords.com">team@jeremylegalrecords.com</a></span>
+    <span><a href="#privacy">Privacy</a> · Site code MIT</span>
+    <p id="privacy" style="flex-basis:100%;margin:.6rem 0 0;max-width:46rem">Privacy: your royalty files are read in your browser and never uploaded. We count visits without cookies and count how many dashboards get generated (just the number). If you join the list, we keep your email to send you label news and the demo pack. That's it.</p>
+  </div>
+</footer>
+</body>
+</html>

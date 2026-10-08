@@ -1,0 +1,9 @@
+.DS_Store
+assets/originals/
+assets/fonts/fonts.css
+*.md
+!README.md
+*.png
+!assets/**/*.png
+*.bundle
+*-private.*
