@@ -7,7 +7,7 @@
 <meta name="description" content="Drop in your DistroKid, APRA AMCOS and PPCA files and see what's been paid, where you're heard and what's missing. Your files stay in your browser.">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#0b1220">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self' data:; base-uri 'none'; script-src 'sha256-TrBHCX7N9C6irF2jXflKELqLspqMwdudJGKoB3C6MkQ=' https://sibforms.com/forms/end-form/build/main.js https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/; connect-src https://57fd91ea.sibforms.com https://www.google.com/recaptcha/; form-action https://57fd91ea.sibforms.com">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
 <link rel="icon" href="img/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="landing.css">
 </head>
@@ -202,40 +202,6 @@
       <a class="btn go" href="app/index.html">Try it free <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
       <a class="btn" href="app/index.html?demo=1">Try with demo data</a>
     </div>
-      <div class="signup" id="intel">
-        <p class="k">Get Intel</p>
-        <p class="signup-lead">Label news and developments on our projects.</p>
-        <div class="sib-form intel-form">
-          <div id="sib-form-container" class="sib-form-container">
-            <div id="error-message" class="sib-form-message-panel" role="alert">
-              <div class="sib-form-message-panel__text"><span class="sib-form-message-panel__inner-text">The paperwork jammed. Your signup didn't save, so please try again</span></div>
-            </div>
-            <div id="success-message" class="sib-form-message-panel" role="status">
-              <div class="sib-form-message-panel__text"><span class="sib-form-message-panel__inner-text">You're on the ledger. Check your inbox and confirm.</span></div>
-            </div>
-            <div id="sib-container" class="sib-container">
-              <form id="sib-form" method="POST" action="https://57fd91ea.sibforms.com/serve/MUIFALExBXoqMPir3t8sjds6cyhq8ivMhCazFc4KT5ORuBX_WdWrT179mf3YmEE4mw-oL0kveRaaveiOIj1BOJEFUyoL76tuDraPE8NLCSSfL16wB48yGNlk3oIXrMhlqr6OVAiGNAO2t7fBv-fScsnzRtEtfvtPQq8-G4bj2zPE6lp3kf8v-OwPVMOldklVxGBRzsTCpckNIz3R" data-type="subscription">
-                <div class="sib-input sib-form-block">
-                  <div class="form__entry entry_block">
-                    <div class="form__label-row">
-                      <label class="entry__label sr-only" for="EMAIL" data-required="*">Email</label>
-                      <div class="entry__field intel">
-                        <input class="input" type="text" id="EMAIL" name="EMAIL" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="your@email" data-required="true" required>
-                        <button class="sib-form-block__button sib-form-block__button-with-loader btn go" form="sib-form" type="submit"><svg class="progress-indicator__icon sib-hide-loader-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>GET INTEL</button>
-                      </div>
-                    </div>
-                    <label class="entry__error entry__error--primary"></label>
-                  </div>
-                </div>
-                <div class="g-recaptcha-v3" data-sitekey="6Ld30eQtAAAAAOfJbQh3xwgnPeVeQ2SvlI9pb-iG" hidden></div>
-                <input type="text" name="email_address_check" value="" class="input--hidden" tabindex="-1" autocomplete="off">
-                <input type="hidden" name="locale" value="en">
-              </form>
-            </div>
-          </div>
-        </div>
-        <p class="signup-note">The signup form uses Google reCAPTCHA, which may set cookies, and emails are handled by Brevo.</p>
-      </div>
   </div>
 </section>
 </main>
@@ -247,16 +213,5 @@
     <span class="links"><a href="../index.html">Home</a><a href="index.html">Royalty Dashboard</a><a href="#privacy">Privacy</a><a href="app/LICENSE">Code MIT</a></span>
   </div>
 </footer>
-<script>
-window.REQUIRED_CODE_ERROR_MESSAGE = 'Please choose a country code';
-window.LOCALE = 'en';
-window.EMAIL_INVALID_MESSAGE = window.SMS_INVALID_MESSAGE = "That email didn't pass legal review. Check it and try again";
-window.REQUIRED_ERROR_MESSAGE = "We'll need an email. Even Jeremy can't send intel to nobody";
-window.GENERIC_INVALID_MESSAGE = "That email didn't pass legal review. Check it and try again";
-window.translation = {common: {selectedList: '{quantity} list selected', selectedLists: '{quantity} lists selected', selectedOption: '{quantity} selected', selectedOptions: '{quantity} selected'}};
-var AUTOHIDE = Boolean(0);
-</script>
-<script defer src="https://sibforms.com/forms/end-form/build/main.js"></script>
-<script src="https://www.google.com/recaptcha/api.js?render=6Ld30eQtAAAAAOfJbQh3xwgnPeVeQ2SvlI9pb-iG&amp;hl=en" async defer></script>
 </body>
 </html>

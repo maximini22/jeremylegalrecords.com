@@ -32,6 +32,8 @@ img{display:block;max-width:100%}
 /* hero */
 .hero{position:relative;min-height:calc(100svh - 64px);display:flex;align-items:flex-end;overflow:hidden;isolation:isolate}
 .hero picture,.hero picture img{position:absolute;inset:0;width:100%;height:100%}
+.hero picture{z-index:-2;pointer-events:none}
+.hero::after{pointer-events:none}
 .hero picture img{object-fit:cover;object-position:52% 18%;z-index:-2}
 .hero::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(12,10,8,0) 30%,rgba(12,10,8,.72) 62%,var(--bg) 96%)}
 .hero .wrap{padding-block:3rem 3.5rem}
@@ -76,28 +78,6 @@ blockquote cite{font-style:normal;color:var(--mute)}
 .cta{text-align:center}
 .cta h2{font-size:clamp(2rem,5.5vw,3.2rem);margin:0 0 .4rem;line-height:1.1}
 .cta p{color:var(--mute);margin:0 0 1.8rem}
-/* signup form (Brevo markup, JLR styling; main.js toggles the classes below) */
-.intel{margin:0 auto;max-width:30rem;display:flex;gap:.5rem;border:1px solid var(--line);border-radius:999px;padding:.35rem;transition:border-color .2s}
-.intel:focus-within{border-color:var(--amber)}
-.intel input{flex:1;min-width:0;background:transparent;border:0;color:var(--ink);font:inherit;font-size:16px;padding:.5rem 1rem;outline:none}
-.intel input::placeholder{color:rgba(255,255,255,.45)}
-.intel .btn{border-color:var(--amber);background:var(--amber);color:#0c0a08}
-.intel .btn:hover{filter:brightness(1.08)}
-.intel-note{font-size:.72rem;color:var(--mute);margin-top:.8rem}
-.intel-form{margin-top:1.8rem}
-.intel-form form{margin:0}
-.entry__error{display:none;margin:.6rem auto 0;max-width:30rem;font-size:.8rem;line-height:1.5;color:#f0a58f}
-.entry_errored .intel{border-color:#c8553d}
-.input--hidden{display:none!important}
-.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.sib-form-message-panel{display:none;max-width:30rem;margin:0 auto 1.2rem;border:1px solid var(--line);border-radius:14px;padding:.9rem 1.2rem;font-size:.9rem;line-height:1.6;background:var(--card)}
-.sib-form-message-panel--active{display:block}
-#success-message{border-color:var(--amber);box-shadow:0 0 28px rgba(217,164,91,.18)}
-#error-message{border-color:#c8553d;color:#f6c9bd}
-.progress-indicator__icon{width:1.1em;height:1.1em;animation:spin 1s linear infinite}
-.sib-hide-loader-icon{display:none}
-.sib-form-block__button-disabled{opacity:.6;cursor:wait}
-@keyframes spin{to{transform:rotate(360deg)}}
 footer{border-top:1px solid var(--line);padding-block:2rem;font-size:.78rem;color:var(--mute)}
 footer .wrap{display:flex;flex-wrap:wrap;gap:.4rem 1.4rem;justify-content:space-between}
 footer a{text-decoration:none}
@@ -128,9 +108,6 @@ footer a{text-decoration:none}
 .section-head h2{margin:0;font-size:clamp(1.8rem,4.5vw,2.6rem);line-height:1.1}
 .section-head p{margin:0;color:var(--mute);max-width:28rem}
 .hero .chop{color:var(--mute);margin:1.4rem 0 0;font-size:.64rem}
-.intel-sec{text-align:center}
-.intel-sec h2{font-size:clamp(1.8rem,4.5vw,2.6rem);margin:0 0 .4rem;line-height:1.1}
-.intel-sec p.lead{color:var(--mute);margin:0 auto;max-width:30rem}
 .roster{padding-block:clamp(2.5rem,6vw,3.5rem)}
 .roster-row{max-width:40rem}
 .roster h2{font-size:clamp(1.6rem,4vw,2.2rem);margin:0 0 .4rem;line-height:1}
@@ -164,7 +141,6 @@ footer a{text-decoration:none}
         <p class="sub">An independent label building financial literacy tools for sovereign artists. Creative liberation, no middleman. Your music. Your numbers. Your call.</p>
         <div class="ctas">
           <a class="btn solid mono" href="royalty-dashboard/index.html">→ Royalty Dashboard</a>
-          <a class="btn mono" href="#intel">→ Get Intel</a>
         </div>
       </div>
     </div>
@@ -205,44 +181,6 @@ footer a{text-decoration:none}
     </div>
   </section>
 
-  <section class="intel-sec" id="intel">
-    <div class="wrap">
-      <p class="kicker mono">Get Intel</p>
-      <h2 class="serif">Intel from the label</h2>
-      <p class="lead">Label news and developments on our projects.</p>
-      <div class="sib-form intel-form">
-        <div id="sib-form-container" class="sib-form-container">
-          <div id="error-message" class="sib-form-message-panel" role="alert">
-            <div class="sib-form-message-panel__text"><span class="sib-form-message-panel__inner-text">The paperwork jammed. Your signup didn't save, so please try again</span></div>
-          </div>
-          <div id="success-message" class="sib-form-message-panel" role="status">
-            <div class="sib-form-message-panel__text"><span class="sib-form-message-panel__inner-text">You're on the ledger. Check your inbox and confirm.</span></div>
-          </div>
-          <div id="sib-container" class="sib-container">
-            <form id="sib-form" method="POST" action="https://57fd91ea.sibforms.com/serve/MUIFALExBXoqMPir3t8sjds6cyhq8ivMhCazFc4KT5ORuBX_WdWrT179mf3YmEE4mw-oL0kveRaaveiOIj1BOJEFUyoL76tuDraPE8NLCSSfL16wB48yGNlk3oIXrMhlqr6OVAiGNAO2t7fBv-fScsnzRtEtfvtPQq8-G4bj2zPE6lp3kf8v-OwPVMOldklVxGBRzsTCpckNIz3R" data-type="subscription">
-              <div class="sib-input sib-form-block">
-                <div class="form__entry entry_block">
-                  <div class="form__label-row">
-                    <label class="entry__label sr-only" for="EMAIL" data-required="*">Email</label>
-                    <div class="entry__field intel">
-                      <input class="input" type="text" id="EMAIL" name="EMAIL" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="your@email" data-required="true" required>
-                      <button class="sib-form-block__button sib-form-block__button-with-loader btn solid sm mono" form="sib-form" type="submit"><svg class="progress-indicator__icon sib-hide-loader-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>GET INTEL</button>
-                    </div>
-                  </div>
-                  <label class="entry__error entry__error--primary"></label>
-                </div>
-              </div>
-              <div class="g-recaptcha-v3" data-sitekey="6Ld30eQtAAAAAOfJbQh3xwgnPeVeQ2SvlI9pb-iG" hidden></div>
-              <input type="text" name="email_address_check" value="" class="input--hidden" tabindex="-1" autocomplete="off">
-              <input type="hidden" name="locale" value="en">
-            </form>
-          </div>
-        </div>
-      </div>
-      <p class="intel-note">You'll be in the ledger. <a href="#privacy">Privacy</a></p>
-    </div>
-  </section>
-
   <section class="mission">
     <div class="wrap">
       <p class="kicker mono">The mission</p>
@@ -266,19 +204,8 @@ footer a{text-decoration:none}
   <div class="wrap">
     <span>© 2026 Jeremy Legal Records · <a href="mailto:team@jeremylegalrecords.com">team@jeremylegalrecords.com</a></span>
     <span><a href="#privacy">Privacy</a> · Site code MIT</span>
-    <p id="privacy" style="flex-basis:100%;margin:.6rem 0 0;max-width:46rem">Privacy: your royalty files are read in your browser and never uploaded. The signup form uses Google reCAPTCHA, which may set cookies, and emails are handled by Brevo. If you join the list, we keep your email to send you label news and developments on our projects. That's it.</p>
+    <p id="privacy" style="flex-basis:100%;margin:.6rem 0 0;max-width:46rem">Privacy: your royalty files are read in your browser and never uploaded. We don't use cookies or tracking. That's it.</p>
   </div>
 </footer>
-<script>
-window.REQUIRED_CODE_ERROR_MESSAGE = 'Please choose a country code';
-window.LOCALE = 'en';
-window.EMAIL_INVALID_MESSAGE = window.SMS_INVALID_MESSAGE = "That email didn't pass legal review. Check it and try again";
-window.REQUIRED_ERROR_MESSAGE = "We'll need an email. Even Jeremy can't send intel to nobody";
-window.GENERIC_INVALID_MESSAGE = "That email didn't pass legal review. Check it and try again";
-window.translation = {common: {selectedList: '{quantity} list selected', selectedLists: '{quantity} lists selected', selectedOption: '{quantity} selected', selectedOptions: '{quantity} selected'}};
-var AUTOHIDE = Boolean(0);
-</script>
-<script defer src="https://sibforms.com/forms/end-form/build/main.js"></script>
-<script src="https://www.google.com/recaptcha/api.js?render=6Ld30eQtAAAAAOfJbQh3xwgnPeVeQ2SvlI9pb-iG&amp;hl=en" async defer></script>
 </body>
 </html>

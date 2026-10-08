@@ -197,27 +197,3 @@ footer a:hover{color:var(--text)}
   .screens figcaption span{font-size:.8rem}
   .src{flex-basis:100%}
 }
-/* signup form (Brevo markup, landing styling; main.js toggles the classes below) */
-.signup{max-width:34rem;margin:3.2rem auto 0;padding:clamp(1.3rem,4vw,2rem);background:linear-gradient(135deg,rgba(46,196,182,.10),rgba(21,29,46,.6) 55%);border:1px solid rgba(46,196,182,.3);border-radius:18px}
-.signup .k{margin-bottom:.5rem}
-.signup-lead{color:var(--muted);margin:0 0 1.3rem;font-size:.98rem}
-.signup-note{color:var(--dim);font-size:.8rem;margin:1rem 0 0}
-.signup form{margin:0}
-.signup .intel{display:flex;gap:.5rem;background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:.35rem;transition:border-color .15s}
-.signup .intel:focus-within{border-color:var(--teal)}
-.signup .intel input{flex:1;min-width:0;background:transparent;border:0;color:var(--text);font:inherit;font-size:16px;padding:.5rem .8rem;outline:none}
-.signup .intel input::placeholder{color:var(--dim)}
-.signup .intel .btn{min-height:44px;padding:.5rem 1.1rem;border-radius:10px;flex:none}
-.signup .entry__error{display:none;margin-top:.6rem;font-size:.86rem;color:var(--red)}
-.signup .entry_errored .intel{border-color:var(--red)}
-.input--hidden{display:none!important}
-.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.sib-form-message-panel{display:none;margin:0 0 1.1rem;border:1px solid var(--line);border-radius:12px;padding:.85rem 1.1rem;font-size:.95rem;background:var(--card)}
-.sib-form-message-panel--active{display:block}
-#success-message{border-color:var(--neon);color:var(--text);box-shadow:0 0 26px rgba(61,255,138,.16)}
-#error-message{border-color:var(--red);color:#ffc2c8}
-.progress-indicator__icon{width:18px;height:18px;animation:spin 1s linear infinite}
-.sib-hide-loader-icon{display:none}
-.sib-form-block__button-disabled{opacity:.6;cursor:wait}
-@keyframes spin{to{transform:rotate(360deg)}}
-@media (max-width:520px){.signup .intel .btn{flex:none}}
