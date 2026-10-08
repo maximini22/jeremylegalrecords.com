@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Royalty Dashboard</title>
+<meta name="description" content="Royalty Dashboard. Your files are read in your browser and never uploaded.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#0b1220">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./" aria-label="Royalty Dashboard">
+      <img src="assets/icon.svg" alt="" width="32" height="32">
+      <span class="brand-title">Royalty <span class="t">Dashboard</span></span>
+    </a>
+    <span class="spacer"></span>
+    <span id="demoTag" class="tag mono" hidden>Demo data</span>
+    <button id="filesBtn" class="btn sm mono" type="button" hidden>Files</button>
+  </div>
+</header>
+
+<main>
+  <section id="empty" class="empty">
+    <div class="wrap">
+      <p class="kicker mono"><span class="tag beta mono">Beta</span></p>
+      <h1 class="serif">Royalty <span class="t">Dashboard</span></h1>
+      <p class="sub">Read in your browser. Nothing uploaded.</p>
+      <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose files or drop them here">
+        <div class="drop-in">
+          <strong class="serif">Drop your exports here</strong>
+          <span class="mono small">DistroKid · APRA AMCOS · PPCA</span>
+          <div class="ctas">
+            <button id="pickBtn" class="btn solid mono" type="button">→ Choose files</button>
+            <button id="demoBtn" class="btn mono" type="button">→ Try with demo data</button>
+          </div>
+        </div>
+      </div>
+      <ul class="accepts">
+        <li><b>DistroKid</b> all-time earnings CSV</li>
+        <li><b>APRA AMCOS</b> royalty statements (AUS, NZ), Works List, source categories</li>
+        <li><b>PPCA</b> repertoire</li>
+      </ul>
+      <p class="small mute"><a class="mono dl" href="demo/jeremy-legal-demo-pack.zip" download>↓ Download demo pack</a> <span class="mute">· fictional data</span></p>
+      <p id="status" class="status mono" role="status" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <section id="dash" class="dash" hidden>
+    <nav class="tabs" aria-label="Views">
+      <div class="wrap tabs-in">
+        <button class="tab mono" data-tab="money" type="button"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 7h6v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Money</button>
+        <button class="tab mono" data-tab="market" type="button"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z" fill="none" stroke="currentColor" stroke-width="2"/></svg></span>Market</button>
+        <button class="tab mono" data-tab="song" type="button"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l11-2v13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6" cy="18" r="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17" cy="16" r="3" fill="none" stroke="currentColor" stroke-width="2"/></svg></span>Song</button>
+        <button class="tab mono" data-tab="register" type="button"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 12l3 3 5-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Register</button>
+      </div>
+    </nav>
+    <div class="wrap">
+      <div id="range" class="range"></div>
+      <div id="view" class="view"></div>
+    </div>
+  </section>
+
+  <div id="filesPanel" class="panel" hidden>
+    <div class="panel-in">
+      <div class="panel-head">
+        <h2 class="serif">Files</h2>
+        <button id="closeFiles" class="btn sm mono" type="button">Close</button>
+      </div>
+      <p class="small mute">Read in this browser tab only. Close or reload the tab to clear.</p>
+      <div id="filesList"></div>
+      <div class="ctas">
+        <button id="addBtn" class="btn solid sm mono" type="button">+ Add files</button>
+        <button id="clearBtn" class="btn sm mono" type="button">Clear all</button>
+      </div>
+    </div>
+  </div>
+  <div id="dropOverlay" class="overlay" hidden><span class="serif">Drop to add</span></div>
+  <input id="picker" type="file" multiple accept=".csv,.tsv,.txt,.xlsx,.xls" hidden>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>By ROBBIE P / Jeremy Legal Records</span>
+    <span>Files stay in your browser · No cookies · Code MIT · <a href="vendor/LICENSE-SheetJS.txt">SheetJS</a> · <a href="vendor/LICENSE-PapaParse.txt">Papa Parse</a></span>
+  </div>
+</footer>
+<script src="vendor/papaparse.min.js"></script>
+<script src="vendor/xlsx.mini.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -7,3 +7,4 @@ assets/fonts/fonts.css
 !assets/**/*.png
 *.bundle
 *-private.*
+!royalty-dashboard/img/*.png
