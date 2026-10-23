@@ -7,7 +7,7 @@
   var OLD_KEY = 'jlr-guitar-tab:current'; // first scaffold (single tab), migrated on load
   var PH_KEY = 'jlr-guitar-tab:playheads';
   var HINT_KEY = 'jlr-guitar-tab:hint-v4-seen';
-  var INLAYS = { 3: 1, 5: 1, 7: 1, 9: 1, 12: 2 };
+  var INLAYS = { 3: 1, 5: 1, 7: 1, 9: 1, 12: 2, 17: 1, 19: 1, 21: 1 }; // no dot at 15, by request
   var TUNING_SHORT = { 'c-standard': 'C std', 'drop-c': 'Drop C', 'd-standard': 'D std', 'drop-d': 'Drop D', 'e-standard': 'E std', 'open-g': 'Open G', custom: 'Custom' };
 
   // Browser-only app: never show an install prompt or banner.
@@ -435,7 +435,22 @@
     var other = sh.scrollHeight - body.offsetHeight, avail = vh - other - 1;
     var over = side.scrollHeight - avail;
     if (over > 0) sh.style.setProperty('--chip', Math.max(30, 42 - Math.ceil(over / 6)) + 'px');
-    sh.style.setProperty('--frow', Math.max(20, Math.min(38, Math.floor((avail - 2) / (M.MAX_FRET + 1)))) + 'px');
+    // 23 rows: shrink them down to FROW_MIN. If they still don't fit (short screens), keep FROW_MIN rows and let only
+    // the neck scroll inside the sheet, so tap targets stay usable; the sheet itself never scrolls.
+    var rows = M.MAX_FRET + 1, fr = Math.floor((avail - 2) / rows), scroll = fr < FROW_MIN;
+    sh.style.setProperty('--frow', (scroll ? FROW_MIN : Math.min(38, fr)) + 'px');
+    sh.style.setProperty('--neckh', scroll ? Math.max(FROW_MIN * 6, avail - 2) + 'px' : 'none');
+    els.neck.classList.toggle('scrolls', scroll);
+    keepFretInView();
+  }
+  var FROW_MIN = 24;
+  // When the neck scrolls, keep the placed fret in view (with none placed, leave the scroll where it is).
+  function keepFretInView() {
+    var nk = els.neck; if (nk.scrollHeight <= nk.clientHeight + 1) { nk.scrollTop = 0; return; }
+    var on = nk.querySelector('.frow.on'); if (!on) return;
+    var top = on.offsetTop, h = on.offsetHeight, pad = h;
+    if (top - pad < nk.scrollTop) nk.scrollTop = Math.max(0, top - pad);
+    else if (top + h + pad > nk.scrollTop + nk.clientHeight) nk.scrollTop = top + h + pad - nk.clientHeight;
   }
 
   var lastKey = null;
@@ -459,7 +474,7 @@
       b.type = 'button'; b.className = 'chip'; b.dataset.str = s; b.setAttribute('role', 'radio');
       els.pickerStrings.appendChild(b);
     }
-    // Vertical neck: open string above the nut, then frets 1..16 going down, inlays on the fretboard.
+    // Vertical neck: open string above the nut, then frets 1..MAX_FRET (22) going down, inlays on the fretboard.
     for (var f = 0; f <= M.MAX_FRET; f++) {
       var fb = document.createElement('button');
       fb.type = 'button'; fb.dataset.fret = f;

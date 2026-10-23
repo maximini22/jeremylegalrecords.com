@@ -183,7 +183,9 @@ body.daw { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; backg
 /* fret picker: vertical neck */
 .picker-sub { display: block; font-size: .85rem; color: var(--muted); }
 .picker-body { display: grid; grid-template-columns: 1fr 140px; gap: 10px; align-items: start; }
-.neck { display: flex; flex-direction: column; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+.neck { position: relative; display: flex; flex-direction: column; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+.neck.scrolls { max-height: var(--neckh, none); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
+.neck.scrolls .frow { flex: none; }
 .frow { display: grid; grid-template-columns: 38px 1fr; align-items: stretch; height: var(--frow, 38px); padding: 0; text-align: left; color: var(--text); background: none; }
 .frow .n { display: flex; align-items: center; justify-content: center; font: 700 .95rem var(--mono); color: var(--muted); background: #121a29; border-bottom: 1px solid var(--line); }
 .frow .board { position: relative; display: flex; align-items: center; justify-content: center; background:
