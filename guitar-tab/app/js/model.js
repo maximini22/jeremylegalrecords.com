@@ -24,11 +24,16 @@
   var TUNING_BY_ID = {};
   TUNINGS.forEach(function (t) { TUNING_BY_ID[t.id] = t; });
 
-  // Grid / note values: plain values only (no dotted, no triplet grids).
-  var DUR_VALUES = ['whole', 'half', 'quarter', 'eighth', 'sixteenth'];
-  var DUR_QUARTERS = { whole: 4, half: 2, quarter: 1, eighth: 0.5, sixteenth: 0.25 };
-  var DUR_LETTER = { whole: 'W', half: 'H', quarter: 'Q', eighth: 'E', sixteenth: 'S' };
-  var DUR_FRACTION = { whole: '1/1', half: '1/2', quarter: '1/4', eighth: '1/8', sixteenth: '1/16' };
+  // Grid / note values. The grid is one value (whole .. 64th) plus an optional style: dotted (x1.5) or triplet (x2/3).
+  // Every combination is a whole number of ticks at PPQ 480 (dotted 64th = 45, 64th triplet = 20).
+  var DUR_VALUES = ['whole', 'half', 'quarter', 'eighth', 'sixteenth', 'thirtysecond', 'sixtyfourth'];
+  var DUR_QUARTERS = { whole: 4, half: 2, quarter: 1, eighth: 0.5, sixteenth: 0.25, thirtysecond: 0.125, sixtyfourth: 0.0625 };
+  var DUR_LETTER = { whole: 'W', half: 'H', quarter: 'Q', eighth: 'E', sixteenth: 'S', thirtysecond: 'T', sixtyfourth: 'X' };
+  var DUR_FRACTION = { whole: '1/1', half: '1/2', quarter: '1/4', eighth: '1/8', sixteenth: '1/16', thirtysecond: '1/32', sixtyfourth: '1/64' };
+  var DUR_NAME = { whole: 'whole', half: 'half', quarter: 'quarter', eighth: 'eighth', sixteenth: '16th', thirtysecond: '32nd', sixtyfourth: '64th' };
+  var BEAMS = { eighth: 1, sixteenth: 2, thirtysecond: 3, sixtyfourth: 4 }; // beams (or flags) per value
+  var TRIPLET = { actual: 3, normal: 2 };
+  var GRID_STYLES = ['plain', 'dotted', 'triplet'];
   var TIME_SIGS = ['4/4', '3/4', '2/4', '6/8'];
   var TECHNIQUES = ['muted', 'hammer-on', 'pull-off', 'slide', 'bend', 'vibrato', 'palm-mute', 'harmonic', 'tap', 'let-ring'];
   var DEFAULT_VOLUME = 80;
@@ -38,24 +43,36 @@
   function clampInt(v, lo, hi) { v = Math.round(Number(v)); if (!isFinite(v)) v = lo; return Math.max(lo, Math.min(hi, v)); }
   function isInt(v, lo, hi) { return typeof v === 'number' && v % 1 === 0 && v >= lo && v <= hi; }
 
-  // Accepts legacy {value, dotted, tuplet} objects too (used for migration and for naming spacings).
+  // Ticks of a {value, dotted, tuplet} length (grid or named note spacing).
   function durTicks(d) {
     var t = PPQ * DUR_QUARTERS[d.value];
     if (d.dotted) t *= 1.5;
     if (d.tuplet) t = t * d.tuplet.normal / d.tuplet.actual;
     return Math.round(t);
   }
-  function durLabel(d) { return DUR_LETTER[d.value] + (d.dotted ? '.' : ''); }
+  function isTriplet(d) { return !!(d && d.tuplet && d.tuplet.actual === 3 && d.tuplet.normal === 2); }
+  function gridStyle(d) { return d && d.dotted ? 'dotted' : isTriplet(d) ? 'triplet' : 'plain'; }
+  // Short label: Q, Q. (dotted), Q³ (triplet).
+  function durLabel(d) { return DUR_LETTER[d.value] + (d.dotted ? '.' : '') + (isTriplet(d) ? '³' : ''); }
+  // Grid label: 1/8, 1/8. or 1/8T, and the spoken name: eighth, dotted eighth, eighth triplet.
+  function gridLabel(d) { return DUR_FRACTION[d.value] + (d.dotted ? '.' : '') + (isTriplet(d) ? 'T' : ''); }
+  function gridName(d) { return (d.dotted ? 'dotted ' : '') + DUR_NAME[d.value] + (isTriplet(d) ? ' triplet' : ''); }
   function defaultGrid() { return { value: 'eighth' }; }
-  // Old dotted/triplet grids -> nearest plain value. Dotted X sits exactly between X and 2X, so the tie
-  // goes to the written value X (drop the dot). Triplet X (2/3 of X) is nearest the next finer value.
-  function plainGrid(g) {
+  // The one canonical grid object per value + style: {value}, {value, dotted: true} or {value, tuplet: {3:2}}.
+  function makeGrid(value, style) {
+    var g = { value: DUR_VALUES.indexOf(value) < 0 ? 'eighth' : value };
+    if (style === 'dotted') g.dotted = true;
+    else if (style === 'triplet') g.tuplet = { actual: TRIPLET.actual, normal: TRIPLET.normal };
+    return g;
+  }
+  // Any stored grid -> canonical value + style. Dotted and 3:2 triplet grids are kept as they are. Only grids
+  // the app can't show are changed (and reported): other tuplets (e.g. 5:4) drop to the plain value, and a
+  // dotted triplet keeps the triplet.
+  function normGrid(g) {
     if (!g || DUR_VALUES.indexOf(g.value) < 0) return { grid: defaultGrid(), changed: !!g };
-    if (g.tuplet) {
-      var i = DUR_VALUES.indexOf(g.value);
-      return { grid: { value: DUR_VALUES[Math.min(i + 1, DUR_VALUES.length - 1)] }, changed: true };
-    }
-    return { grid: { value: g.value }, changed: !!g.dotted };
+    var odd = g.tuplet && !isTriplet(g), both = !!g.dotted && isTriplet(g);
+    var style = isTriplet(g) ? 'triplet' : g.dotted && !g.tuplet ? 'dotted' : 'plain';
+    return { grid: makeGrid(g.value, style), changed: !!(odd || both) };
   }
 
   function measureTicks(p) { var ts = p.timeSignature; return Math.round(ts[0] * PPQ * 4 / ts[1]); }
@@ -79,12 +96,11 @@
     return { id: CUSTOM.id, name: CUSTOM.name, midi: midi.slice() };
   }
 
-  // Standard lengths a note's spacing can be named as (rhythm row, text tab). Dotted names are display only.
+  // Standard lengths a note's spacing can be named as (rhythm row, text tab): every value plain, dotted and triplet.
+  // All 21 tick counts are distinct, so a spacing has at most one name.
   var NAMED = [];
-  DUR_VALUES.forEach(function (v) {
-    [false, true].forEach(function (dot) { var d = { value: v, dotted: dot }; NAMED.push({ d: d, ticks: durTicks(d) }); });
-  });
-  function nameTicks(t) { for (var i = 0; i < NAMED.length; i++) if (NAMED[i].ticks === t) return { value: NAMED[i].d.value, dotted: NAMED[i].d.dotted }; return null; }
+  GRID_STYLES.forEach(function (st) { DUR_VALUES.forEach(function (v) { var d = makeGrid(v, st); NAMED.push({ d: d, ticks: durTicks(d) }); }); });
+  function nameTicks(t) { for (var i = 0; i < NAMED.length; i++) if (NAMED[i].ticks === t) return JSON.parse(JSON.stringify(NAMED[i].d)); return null; }
 
   function newTrack(name, tuningId) {
     return { id: uid(), name: name || 'Guitar', tuning: tuningFromId(tuningId || DEFAULT_TUNING), volume: DEFAULT_VOLUME, mute: false, solo: false, notes: [] };
@@ -152,9 +168,8 @@
   }
 
   // ---------- validation ----------
-  function checkDur(d, where, plainOnly) {
+  function checkDur(d, where) {
     if (!d || DUR_VALUES.indexOf(d.value) < 0) return where + ': unknown note length.';
-    if (plainOnly && (d.dotted || d.tuplet)) return where + ': grid must be a plain value.';
     if (d.tuplet != null && !(d.tuplet && isInt(d.tuplet.actual, 2, 9) && isInt(d.tuplet.normal, 1, 8))) return where + ': bad tuplet.';
     return null;
   }
@@ -223,7 +238,7 @@
     if (typeof p.id !== 'string' || !p.id || p.id.length > 64) return where + ': missing id.';
     if (typeof p.title !== 'string' || p.title.length > 200) return where + ': bad title.';
     if (!Array.isArray(p.tracks) || p.tracks.length < 1 || p.tracks.length > LIMITS.importTracks) return where + ': needs 1 to ' + LIMITS.importTracks + ' tracks.';
-    if (v >= 3 && p.grid != null) { var g = checkDur(p.grid, where + ' grid', false); if (g) return g; }
+    if (v >= 3 && p.grid != null) { var g = checkDur(p.grid, where + ' grid'); if (g) return g; }
     if (v >= 4) {
       var e1 = checkTiming(p, where); if (e1) return e1;
       if (!isInt(p.lengthTicks, 1, measureTicks(p) * LIMITS.measures)) return where + ': bad lengthTicks.';
@@ -316,8 +331,8 @@
         notes: t.notes.map(function (n) { return { string: n.string, fret: n.fret, startTick: n.startTick, durationTicks: 0, techniques: n.techniques.slice(0, 10) }; })
       };
     });
-    var g = plainGrid(p.grid);
-    if (g.changed) warnings.push(label + ': grid ' + durLabel(p.grid) + (p.grid.tuplet ? ' triplet' : '') + ' is now ' + DUR_FRACTION[g.grid.value] + ' (notes did not move).');
+    var g = normGrid(p.grid);
+    if (g.changed) warnings.push(label + ': grid ' + DUR_FRACTION[p.grid.value] + (p.grid.dotted ? ' dotted' : '') + (p.grid.tuplet ? ' ' + p.grid.tuplet.actual + ':' + p.grid.tuplet.normal + ' tuplet' : '') + ' is now ' + gridLabel(g.grid) + ' (notes did not move).');
     var active = tracks.some(function (t) { return t.id === p.activeTrackId; }) ? p.activeTrackId : tracks[0].id;
     var out = { id: p.id, title: p.title.slice(0, LIMITS.title), bpm: clampInt(p.bpm || 90, 30, 300), grid: g.grid,
       timeSignature: p.timeSignature.slice(), lengthTicks: p.lengthTicks,
@@ -355,8 +370,10 @@
   window.TabModel = {
     SCHEMA: SCHEMA, SCHEMA_VERSION: SCHEMA_VERSION, PPQ: PPQ, STRINGS: STRINGS, MAX_FRET: MAX_FRET, LIMITS: LIMITS,
     TUNINGS: TUNINGS, TUNING_BY_ID: TUNING_BY_ID, CUSTOM: CUSTOM, DUR_VALUES: DUR_VALUES, DUR_LETTER: DUR_LETTER, DUR_FRACTION: DUR_FRACTION,
+    DUR_NAME: DUR_NAME, BEAMS: BEAMS, GRID_STYLES: GRID_STYLES,
     TIME_SIGS: TIME_SIGS, TECHNIQUES: TECHNIQUES, DEFAULT_VOLUME: DEFAULT_VOLUME,
-    uid: uid, nowIso: nowIso, durTicks: durTicks, durLabel: durLabel, nameTicks: nameTicks, defaultGrid: defaultGrid, plainGrid: plainGrid,
+    uid: uid, nowIso: nowIso, durTicks: durTicks, durLabel: durLabel, nameTicks: nameTicks, defaultGrid: defaultGrid, makeGrid: makeGrid, normGrid: normGrid,
+    isTriplet: isTriplet, gridStyle: gridStyle, gridLabel: gridLabel, gridName: gridName,
     measureTicks: measureTicks, beatTicks: beatTicks, tuningLabels: tuningLabels, tuningFromId: tuningFromId, canonicalTuning: canonicalTuning,
     newTrack: newTrack, newProject: newProject, newLibrary: newLibrary, recompute: recompute, measureCount: measureCount,
     measureOfTick: measureOfTick, cells: cells, cellIndexAt: cellIndexAt, audibleTracks: audibleTracks,

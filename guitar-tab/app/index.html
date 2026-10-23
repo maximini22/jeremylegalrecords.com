@@ -65,9 +65,14 @@
   </div>
 </section>
 
-<!-- Toolbar: grid (snap), step, position, undo/redo -->
+<!-- Toolbar: grid value + style (dotted / triplet), step, position, undo/redo -->
 <section class="toolbar" aria-label="Edit tools">
-  <label class="grid-sel"><span>Grid</span><select id="grid-select" class="field" aria-label="Grid (note value per step)"></select></label>
+  <div class="grid-sel" role="group" aria-label="Grid">
+    <select id="grid-select" class="field" aria-label="Grid note value (1/1 to 1/64)"></select>
+    <span class="gstyle" role="group" aria-label="Note style">
+      <button type="button" class="gs" id="grid-dot" aria-pressed="false" aria-label="Dotted grid" title="Dotted: 1.5 × the value (key .)">·</button><button type="button" class="gs" id="grid-trip" aria-pressed="false" aria-label="Triplet grid" title="Triplet: 3 in the time of 2 (key T)">3</button>
+    </span>
+  </div>
   <button type="button" class="tb sm" id="prev-col" aria-label="Previous step">‹</button>
   <button type="button" class="tb sm" id="next-col" aria-label="Next step">›</button>
   <output class="pos" id="ph-info" aria-label="Playhead position, bar|beat|16th">1|1|1</output>

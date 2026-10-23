@@ -43,11 +43,20 @@ body.daw { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; backg
 
 /* ---- Toolbar ---- */
 .toolbar { display: flex; align-items: center; gap: 6px; padding: 0 10px 6px; }
-.grid-sel { display: flex; align-items: center; gap: 6px; flex: none; }
-.grid-sel span { font-size: .66rem; font-weight: 700; color: var(--teal); letter-spacing: .08em; text-transform: uppercase; }
-.grid-sel .field { min-height: 40px; width: 74px; padding: 6px 22px 6px 8px; background-position: right 7px center; font-size: 16px; font-weight: 700; }
+.grid-sel { display: flex; align-items: center; gap: 4px; flex: none; }
+.grid-sel .field { min-height: 40px; width: 66px; padding: 6px 20px 6px 7px; background-position: right 6px center; font-size: 16px; font-weight: 700; }
+/* note style: two-segment control, Dotted | Triplet (mutually exclusive; neither lit = plain) */
+.gstyle { display: flex; height: 40px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; flex: none; }
+.gs { width: 29px; height: 100%; border: 0; background: var(--bg2); color: var(--muted); font: 800 1.05rem var(--font); padding: 0; cursor: pointer; }
+.gs#grid-dot { font-size: 1.7rem; line-height: 1; }
+.gs + .gs { border-left: 1px solid var(--line); }
+.gs.on { background: var(--teal); color: #04201d; }
+.gs:focus-visible { outline: 2px solid var(--teal); outline-offset: -2px; }
+.bpm .tb.sm { touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .toolbar .tb.sm { min-width: 36px; padding: 0 4px; }
 .pos { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-align: center; font: 700 .9rem var(--mono); color: var(--neon); font-variant-numeric: tabular-nums; }
+.pos.long { font-size: .7rem; letter-spacing: -.02em; }
+@media (max-width: 374px) { .toolbar { gap: 4px; padding: 0 8px 6px; } .toolbar .tb.sm { min-width: 32px; } }
 
 /* ---- Track headers ---- */
 .tracks { display: flex; flex-direction: column; gap: 4px; padding: 0 10px 6px; }
@@ -78,10 +87,11 @@ body.daw { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; backg
 .labels { position: sticky; left: 0; z-index: 3; background: var(--bg-deep); padding: 0 4px 0 6px; border-right: 1px solid var(--line); }
 .labels span { height: var(--lane); display: flex; align-items: center; justify-content: center; font: 700 .84rem var(--mono); color: var(--tc, var(--teal)); min-width: 26px; }
 .editor { --tc: var(--t0); } .editor.tc1 { --tc: var(--t1); } .editor.tc2 { --tc: var(--t2); }
-.du { height: 18px; display: flex; align-items: center; justify-content: center; font: 700 .7rem var(--mono); color: var(--muted); }
+.du { height: 16px; display: flex; align-items: center; justify-content: center; font: 700 .7rem var(--mono); color: var(--muted); }
 .labels .du { font-size: .56rem; color: var(--dim); font-weight: 500; }
 .du.cont { color: var(--dim); }
-.bm { height: 12px; position: relative; }
+.bm { height: 14px; position: relative; }
+.tp { height: 11px; position: relative; }
 .col { position: relative; padding: 0 1px; }
 .col.bar { border-left: 2px solid #56657f; margin-left: 4px; }
 .col.loop { background: rgba(245,185,66,.07); }
@@ -108,17 +118,26 @@ body.daw { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; backg
 .cell.off.at::after { right: 2px; top: 3px; left: 2px; bottom: 3px; width: auto; height: auto; background: none; border: 2px dashed var(--teal); border-radius: 8px; box-shadow: none; }
 .cell sup { position: absolute; right: 1px; bottom: 2px; z-index: 2; font: 700 .55rem var(--mono); color: var(--amber); }
 
-/* stems + beams under each step */
-.bm i { position: absolute; height: 3px; background: var(--muted); border-radius: 1px; display: none; }
-.bm::before { content: ""; position: absolute; left: 50%; top: 0; width: 2px; height: 12px; background: var(--muted); transform: translateX(-1px); display: none; }
+/* stems + 1-4 beams (8th, 16th, 32nd, 64th) under each step; flags on a lone note; a dot for dotted values */
+.bm i { position: absolute; height: 2px; background: var(--muted); border-radius: 1px; display: none; }
+.bm::before { content: ""; position: absolute; left: 50%; top: 0; width: 2px; height: 14px; background: var(--muted); transform: translateX(-1px); display: none; }
 .bm.stem::before, .bm[class*="b-"]::before { display: block; }
 .bm.nostem::before { display: none !important; }
-.bm[class*="b-"] i:first-child { display: block; bottom: 0; }
-.bm.lv2 i:last-child { display: block; bottom: 5px; }
+.bm i:nth-child(1) { bottom: 0; } .bm i:nth-child(2) { bottom: 3px; } .bm i:nth-child(3) { bottom: 6px; } .bm i:nth-child(4) { bottom: 9px; }
+.bm.lv1 i:nth-child(-n+1), .bm.lv2 i:nth-child(-n+2), .bm.lv3 i:nth-child(-n+3), .bm.lv4 i:nth-child(-n+4) { display: block; }
+.bm.dot::after { content: ""; position: absolute; left: calc(50% + 4px); top: 1px; width: 4px; height: 4px; border-radius: 50%; background: var(--text); }
+/* triplet mark under the beams: "3" (beamed 8th and shorter) or a bracket with "3" (quarter, half, whole) */
+.tp span { position: absolute; left: 50%; top: -1px; transform: translateX(-50%); padding: 0 2px; font: 800 .62rem/11px var(--mono); color: var(--amber); background: var(--bg-deep); z-index: 1; }
+.tp.br::before { content: ""; position: absolute; top: 5px; height: 4px; border-top: 1.5px solid var(--amber); left: -2px; right: -2px; }
+.tp.br.t-start::before { left: 50%; border-left: 1.5px solid var(--amber); top: 2px; height: 3px; border-top: 0; border-bottom: 1.5px solid var(--amber); }
+.tp.br.t-end::before { right: 50%; border-right: 1.5px solid var(--amber); top: 2px; height: 3px; border-top: 0; border-bottom: 1.5px solid var(--amber); }
+.tp.br.t-only::before { left: 20%; right: 20%; border: 1.5px solid var(--amber); border-top: 0; top: 2px; height: 3px; }
+.tp.br.t-mid::before { top: 2px; height: 3px; border-top: 0; border-bottom: 1.5px solid var(--amber); }
+.col.bar .tp.br.t-mid::before, .col.bar .tp.br.t-end::before { left: -6px; }
 .bm.b-start i { left: 50%; right: -2px; }
 .bm.b-mid i { left: -2px; right: -2px; }
 .bm.b-end i { left: -2px; right: 50%; }
-.bm.b-flag i { left: 50%; width: 10px; transform: skewY(20deg); }
+.bm.b-flag i { left: 50%; width: 9px; transform: skewY(-25deg); }
 .col.bar .bm.b-mid i, .col.bar .bm.b-end i { left: -6px; }
 
 /* ---- Ruler: bar|beat. Top lane = bar numbers + loop brace, bottom lane = beats + playhead ---- */

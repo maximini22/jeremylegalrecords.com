@@ -15,7 +15,7 @@
 
   var $ = function (id) { return document.getElementById(id); };
   var els = {};
-  ['save-state', 'menu-btn', 'play-start', 'play-btn', 'stop-btn', 'loop-toggle', 'bpm', 'grid-select', 'ph-info', 'undo-btn', 'redo-btn',
+  ['save-state', 'menu-btn', 'play-start', 'play-btn', 'stop-btn', 'loop-toggle', 'bpm', 'bpm-down', 'bpm-up', 'grid-select', 'grid-dot', 'grid-trip', 'ph-info', 'undo-btn', 'redo-btn',
    'tracks', 'ruler-wrap', 'ruler', 'editor-wrap', 'editor', 'idea', 'drawer', 'drawer-scrim', 'project-select', 'title', 'track-name',
    'tuning', 'timesig', 'loop-info', 'ascii', 'import-file', 'share-btn', 'picker', 'scrim', 'picker-sub', 'neck', 'picker-strings',
    'picker-grid', 'pick-mute', 'picker-tip', 'toast', 'modal', 'modal-scrim', 'modal-h', 'modal-body', 'modal-actions', 'hint', 'song-info',
@@ -106,8 +106,9 @@
   function undoUi() { var h = H(); els.undoBtn.disabled = !h.undo.length; els.redoBtn.disabled = !h.redo.length; }
 
   // ---------- grid ----------
-  // One grid (snap) per project, plain values only. Every column is one grid step; notes keep their
-  // absolute startTick, so changing the grid only changes how they are drawn.
+  // One grid (snap) per project: a value (1/1 .. 1/64) plus a style (plain, dotted or triplet). Every column is
+  // one grid step (steps restart at each barline); notes keep their absolute startTick, so changing the grid
+  // only changes how they are drawn.
   function grid() { var p = project(); if (!p.grid) p.grid = M.defaultGrid(); return p.grid; }
   function cellsOf() { return M.cells(project(), grid()); }
   var CL = []; // cells of the project at the current grid, refreshed on every render
@@ -115,10 +116,10 @@
   function notesIn(tr, c) { return tr.notes.filter(function (n) { return n.startTick >= c.start && n.startTick < c.start + c.len; }); }
   function notesOn(tr, c, no) { return notesIn(tr, c).filter(function (n) { return n.string === no; }); }
   function buckets(tr) { var b = CL.map(function () { return []; }); tr.notes.forEach(function (n) { b[M.cellIndexAt(CL, n.startTick)].push(n); }); return b; }
-  function gridFrac(g) { return M.DUR_FRACTION[g.value]; }
+  function gridFrac(g) { return M.gridLabel(g); }
   function lenLabel(ticks) {
     var d = M.nameTicks(ticks);
-    return d ? { text: M.DUR_LETTER[d.value] + (d.dotted ? '.' : ''), d: d } : { text: '~', d: null };
+    return d ? { text: M.durLabel(d), d: d } : { text: '~', d: null };
   }
 
   // ---------- rhythm row (derived from note spacing of the armed track) ----------
@@ -127,23 +128,48 @@
     var info = cl.map(function (c, i) {
       var first = bk[i][0] || null, L = first ? lenLabel(first.durationTicks) : null;
       return { measure: c.measure, barStart: i === 0 || c.measure !== cl[i - 1].measure, onset: !!first,
-        len: L ? L.text : '', d: L ? L.d : null, beam: '', beamLevels: 0, stem: false };
+        len: L ? L.text : '', d: L ? L.d : null, beam: '', beamLevels: 0, stem: false, dot: !!(L && L.d && L.d.dotted), tp: '', tpNum: false, tpBracket: false,
+        start: c.start, end: first ? first.startTick + first.durationTicks : c.start };
     });
-    var beamable = function (g) { return g.onset && g.d && !g.d.dotted && (g.d.value === 'eighth' || g.d.value === 'sixteenth'); };
+    // Eighths and shorter (plain, dotted or triplet) take 1-4 beams, beamed together within a beat; a lone one gets flags.
+    var beamable = function (g) { return g.onset && g.d && !!M.BEAMS[g.d.value]; };
     info.forEach(function (g) { g.stem = g.onset && !(g.d && g.d.value === 'whole'); });
     var i = 0;
     while (i < cl.length) {
       if (!beamable(info[i])) { i++; continue; }
       var beat = Math.floor(cl[i].start / bt), j = i, last = i;
       while (j + 1 < cl.length && Math.floor(cl[j + 1].start / bt) === beat && (beamable(info[j + 1]) || !info[j + 1].onset)) { j++; if (beamable(info[j])) last = j; }
+      var prevLv = 1;
       for (var k = i; k <= last; k++) {
         var g = info[k];
-        g.beamLevels = g.d && g.d.value === 'sixteenth' ? 2 : 1;
         g.beam = i === last ? 'flag' : k === i ? 'start' : k === last ? 'end' : 'mid';
-        if (!g.onset) { g.beamLevels = 1; g.stem = false; }
+        if (g.onset) { g.beamLevels = M.BEAMS[g.d.value]; prevLv = g.beamLevels; }
+        else { // a held step inside the group: carry the beams the notes on both sides share
+          var nx = k + 1; while (nx <= last && !info[nx].onset) nx++;
+          g.beamLevels = Math.min(prevLv, nx <= last ? M.BEAMS[info[nx].d.value] : 1); g.stem = false;
+        }
       }
       i = last + 1;
     }
+    // Triplets: notes of one value in the same triplet span (3 notes = 2 of the plain value, counted from the bar line)
+    // are one group, marked "3". Beamed triplets (eighth and shorter) show the number; quarter/half/whole get a bracket.
+    var mt = M.measureTicks(p), keyOf = function (g) { var span = 3 * M.durTicks(g.d); return g.measure + ':' + g.d.value + ':' + Math.floor((g.start - (g.measure - 1) * mt) / span); };
+    var tg = [], curG = null;
+    info.forEach(function (g, ix) {
+      if (!g.onset) return;
+      if (!g.d || !M.isTriplet(g.d)) { curG = null; return; }
+      var key = keyOf(g);
+      if (curG && curG.key === key) curG.b = ix; else { curG = { key: key, a: ix, b: ix, br: !M.BEAMS[g.d.value] }; tg.push(curG); }
+    });
+    tg.forEach(function (t) {
+      var endTick = info[t.b].end, z = t.b;
+      while (z + 1 < info.length && !info[z + 1].onset && info[z + 1].start < endTick && info[z + 1].measure === info[t.b].measure) z++;
+      var mid = Math.floor((t.a + z) / 2);
+      for (var q = t.a; q <= z; q++) {
+        info[q].tp = t.a === z ? 'only' : q === t.a ? 'start' : q === z ? 'end' : 'mid';
+        info[q].tpBracket = t.br; info[q].tpNum = q === mid;
+      }
+    });
     return info;
   }
 
@@ -172,17 +198,18 @@
     cl.forEach(function (c, i) { if (c.measure >= L.startMeasure && c.measure <= L.endMeasure) { if (a < 0) a = i; b = i; } });
     return a < 0 ? null : { a: a, b: b };
   }
-  // bar|beat|sixteenth, as in a DAW position display (1|1|1 is the top of the song).
+  // bar|beat|sixteenth, as in a DAW position display (1|1|1 is the top of the song). Positions between 16ths
+  // (32nd, 64th and triplet grids) add the ticks past that 16th: 1|1|1+60 (PPQ 480, so a 16th is 120 ticks).
   function posLabel(tick) {
-    var p = project(), mt = M.measureTicks(p), bt = M.beatTicks(p), inBar = tick % mt, beat = Math.floor(inBar / bt), sub = inBar - beat * bt;
-    return (Math.floor(tick / mt) + 1) + '|' + (beat + 1) + '|' + (Math.floor(sub / 120) + 1);
+    var p = project(), mt = M.measureTicks(p), bt = M.beatTicks(p), inBar = tick % mt, beat = Math.floor(inBar / bt), sub = inBar - beat * bt, r = sub % 120;
+    return (Math.floor(tick / mt) + 1) + '|' + (beat + 1) + '|' + (Math.floor(sub / 120) + 1) + (r ? '+' + r : '');
   }
   function shownPh() { return A.isPlaying() && playingStep !== null && playProject === project().id ? playingStep : phCell(); }
   function markPlayhead(forced) {
     var ph = forced != null ? forced : shownPh();
     Array.prototype.forEach.call(els.editor.children, function (c, k) { if (k) c.classList.toggle('ph', k - 1 === ph); });
     Array.prototype.forEach.call(els.ruler.children, function (c, k) { if (k) { c.classList.toggle('ph', k - 1 === ph); c.setAttribute('aria-current', k - 1 === ph ? 'step' : 'false'); } });
-    if (CL[ph]) { els.phInfo.textContent = posLabel(CL[ph].start); els.phInfo.title = 'Playhead at bar|beat|16th ' + posLabel(CL[ph].start); }
+    if (CL[ph]) { var pl = posLabel(CL[ph].start); els.phInfo.textContent = pl; els.phInfo.classList.toggle('long', pl.length > 6); fitPos(); els.phInfo.title = 'Playhead at bar|beat|16th(+ticks) ' + pl; }
   }
   function countLabel(c) {
     var p = project(), mt = M.measureTicks(p), bt = M.beatTicks(p), inBar = c.start % mt, off = inBar % bt;
@@ -190,6 +217,7 @@
     if (off * 2 === bt) return { text: '&', beat: false };
     if (off * 4 === bt) return { text: 'e', beat: false };
     if (off * 4 === bt * 3) return { text: 'a', beat: false };
+    if (off * 3 === bt || off * 3 === bt * 2) return { text: off * 3 === bt ? 'trip' : 'let', beat: false };
     return { text: '·', beat: false };
   }
 
@@ -200,7 +228,7 @@
     var sp = document.createElement('div'); sp.className = 'r-lab';
     sp.innerHTML = '<span>bar</span><span class="r-g"></span>';
     sp.lastChild.textContent = gridFrac(grid());
-    sp.title = 'Grid ' + gridFrac(grid());
+    sp.title = 'Grid ' + gridFrac(grid()) + ' (' + M.gridName(grid()) + ')';
     frag.appendChild(sp);
     CL.forEach(function (c, ci) {
       var g = info[ci], inLoop = c.measure >= L.startMeasure && c.measure <= L.endMeasure, cnt = countLabel(c);
@@ -219,7 +247,10 @@
   }
   function syncRulerWidths() {
     var ec = els.editor.children, rc = els.ruler.children;
-    for (var k = 0; k < rc.length && k < ec.length; k++) rc[k].style.width = ec[k].getBoundingClientRect().width + 'px';
+    // read every width first, then write: interleaving forced a layout per column (seconds at 1/64 on long songs)
+    var n = Math.min(rc.length, ec.length), w = new Array(n);
+    for (var k = 0; k < n; k++) w[k] = ec[k].getBoundingClientRect().width;
+    for (k = 0; k < n; k++) rc[k].style.width = w[k] + 'px';
     els.rulerWrap.scrollLeft = els.editorWrap.scrollLeft;
   }
 
@@ -234,7 +265,7 @@
     var frag = document.createDocumentFragment();
     var lab = document.createElement('div'); lab.className = 'labels';
     labels.forEach(function (n) { var s = document.createElement('span'); s.textContent = n; lab.appendChild(s); });
-    lab.insertAdjacentHTML('beforeend', '<div class="du">len</div><div class="bm"></div>');
+    lab.insertAdjacentHTML('beforeend', '<div class="du">len</div><div class="bm"></div><div class="tp"></div>');
     frag.appendChild(lab);
     CL.forEach(function (c, ci) {
       var g = info[ci], col = document.createElement('div');
@@ -261,8 +292,11 @@
         col.appendChild(b);
       }
       var du = document.createElement('div'); du.className = 'du' + (g.onset ? '' : ' cont'); du.textContent = g.len; col.appendChild(du);
-      var bm = document.createElement('div'); bm.className = 'bm' + (g.beam ? ' b-' + g.beam + ' lv' + g.beamLevels : '') + (g.stem ? ' stem' : ' nostem');
-      bm.innerHTML = '<i></i><i></i>'; col.appendChild(bm);
+      var bm = document.createElement('div'); bm.className = 'bm' + (g.beam ? ' b-' + g.beam + ' lv' + g.beamLevels : '') + (g.stem ? ' stem' : ' nostem') + (g.dot ? ' dot' : '');
+      bm.innerHTML = '<i></i><i></i><i></i><i></i>'; col.appendChild(bm);
+      var tp = document.createElement('div'); tp.className = 'tp' + (g.tp ? ' t-' + g.tp + (g.tpBracket ? ' br' : '') : '');
+      if (g.tpNum) { var tn = document.createElement('span'); tn.textContent = '3'; tp.appendChild(tn); }
+      col.appendChild(tp);
       frag.appendChild(col);
     });
     els.editor.textContent = '';
@@ -312,7 +346,10 @@
   function renderTop() {
     var p = project(), L = p.loop;
     if (document.activeElement !== els.bpm) els.bpm.value = p.bpm;
-    els.gridSelect.value = grid().value;
+    var gd = grid(), st = M.gridStyle(gd);
+    els.gridSelect.value = gd.value;
+    setToggle(els.gridDot, st === 'dotted'); setToggle(els.gridTrip, st === 'triplet');
+    els.gridSelect.title = 'Grid ' + gridFrac(gd) + ' (' + M.gridName(gd) + ')';
     setToggle(els.loopToggle, L.enabled);
     els.loopToggle.title = L.enabled ? 'Loop on: bars ' + L.startMeasure + '–' + L.endMeasure : 'Loop off';
     if (document.activeElement !== els.idea) els.idea.value = p.idea || '';
@@ -405,7 +442,10 @@
   // Armed track in full, other tracks faint in their colours, the current step lit and the selected string in yellow.
   function renderRoll() {
     var p = project(), tr = track(), ti = tindex(tr), labels = M.tuningLabels(tr.tuning), c = cell(), m = c.measure, ph = shownPh();
-    var idx = []; CL.forEach(function (x, i) { if (x.measure === m) idx.push(i); });
+    var all = []; CL.forEach(function (x, i) { if (x.measure === m) all.push(i); });
+    // Fine grids (1/32, 1/64, small triplets) have more steps per bar than fit legibly: show a window of up to
+    // ROLL_MAX steps (whole pages of the bar) holding the current step, and say which steps are shown.
+    var pos = all.indexOf(cur.cell), page = Math.floor(Math.max(0, pos) / ROLL_MAX), idx = all.slice(page * ROLL_MAX, page * ROLL_MAX + ROLL_MAX);
     var bt = M.beatTicks(p), first = idx[0], last = idx[idx.length - 1];
     var BK = p.tracks.map(function (t) {
       var b = {}; t.notes.forEach(function (n) { var k = M.cellIndexAt(CL, n.startTick); if (k >= first && k <= last) (b[k] = b[k] || []).push(n); }); return b;
@@ -417,7 +457,7 @@
       idx.forEach(function (ci) {
         var d = document.createElement('div'), mine = (BK[ti][ci] || []).filter(function (n) { return n.string === si + 1; })[0], gh = null, gk = 0;
         if (!mine) BK.forEach(function (b, k) { if (k !== ti && !gh) { var n = (b[ci] || []).filter(function (x) { return x.string === si + 1; })[0]; if (n) { gh = n; gk = k; } } });
-        d.className = 'rc' + (ci === cur.cell ? ' now' : '') + (si === cur.str ? ' sel' : '') + ((CL[ci].start - (m - 1) * M.measureTicks(p)) % bt === 0 && ci !== first ? ' bt' : '') +
+        d.className = 'rc' + (ci === cur.cell ? ' now' : '') + (si === cur.str ? ' sel' : '') + ((CL[ci].start - (m - 1) * M.measureTicks(p)) % bt === 0 && ci !== first ? ' bt' : '') + (idx.length > 12 ? ' fine' : '') +
           (ci === ph ? ' ph' : '') + (mine ? ' has' : gh ? ' gh g' + gk : '');
         d.dataset.col = ci; d.dataset.str = si;
         if (mine) { var b = document.createElement('b'); b.textContent = cellText(mine); d.appendChild(b); } else if (gh) d.textContent = cellText(gh);
@@ -425,7 +465,16 @@
       });
     }
     roll.textContent = ''; roll.appendChild(frag);
-    els.rollBar.textContent = 'Bar ' + m + ' of ' + M.measureCount(p) + ' · step ' + (idx.indexOf(cur.cell) + 1) + '/' + idx.length;
+    els.rollBar.textContent = 'Bar ' + m + ' of ' + M.measureCount(p) + ' · step ' + (pos + 1) + '/' + all.length +
+      (all.length > idx.length ? ' · showing ' + (page * ROLL_MAX + 1) + '–' + (page * ROLL_MAX + idx.length) : '');
+  }
+  var ROLL_MAX = 16;
+  // Shrink the position readout's font (down to 9px) when the label is wider than its slot (narrow phones, fine grids).
+  function fitPos() {
+    var el = els.phInfo; el.style.fontSize = '';
+    if (!el.clientWidth) return;
+    var fs = parseFloat(getComputedStyle(el).fontSize);
+    while (el.scrollWidth > el.clientWidth && fs > 9) { fs -= 0.5; el.style.fontSize = fs + 'px'; }
   }
   // Size the fret rows (and, if needed, the string chips) so the whole picker fits the visible screen without scrolling.
   function fitPicker() {
@@ -467,7 +516,7 @@
   function buildStatic() {
     M.TUNINGS.forEach(function (t) { var o = document.createElement('option'); o.value = t.id; o.textContent = t.name; els.tuning.appendChild(o); });
     M.DUR_VALUES.forEach(function (v) {
-      var o = document.createElement('option'); o.value = v; o.textContent = M.DUR_FRACTION[v]; o.title = v; els.gridSelect.appendChild(o);
+      var o = document.createElement('option'); o.value = v; o.textContent = M.DUR_FRACTION[v]; o.title = M.DUR_NAME[v]; els.gridSelect.appendChild(o);
     });
     for (var s = 0; s < M.STRINGS; s++) {
       var b = document.createElement('button');
@@ -508,13 +557,23 @@
     }
     changed();
   }
-  function setGrid(value) {
-    var gd = grid(), tick = cell().start, wasPlaying = A.isPlaying() && playProject === project().id, playTick = wasPlaying && CL[playingStep] ? CL[playingStep].start : 0;
-    gd.value = value;
+  // Grid value (dropdown) and style (Dotted / Triplet toggles) together make the project grid. The step under
+  // the cursor (and the playhead, if playing) stays on the same tick.
+  function setGrid(value, style) {
+    var p = project(), tick = cell().start, wasPlaying = A.isPlaying() && playProject === p.id, playTick = wasPlaying && CL[playingStep] ? CL[playingStep].start : 0;
+    if (value == null) value = grid().value;
+    if (style == null) style = M.gridStyle(grid());
+    var gd = p.grid = M.makeGrid(value, style);
     CL = cellsOf(); cur.cell = M.cellIndexAt(CL, tick);
     changed({ scroll: true });
     if (wasPlaying) startPlayback(M.cellIndexAt(CL, playTick));
-    toast('Grid ' + gridFrac(gd));
+    toast('Grid ' + gridFrac(gd) + ' · ' + M.gridName(gd));
+  }
+  // Tapping a style turns it on (and the other off); tapping the active one goes back to plain.
+  function toggleStyle(style) { setGrid(null, M.gridStyle(grid()) === style ? 'plain' : style); }
+  function stepGridValue(dlt) {
+    var i = M.DUR_VALUES.indexOf(grid().value) + dlt;
+    if (i >= 0 && i < M.DUR_VALUES.length) setGrid(M.DUR_VALUES[i]);
   }
   function moveStep(dlt) {
     cur.cell += dlt; clampCur();
@@ -799,6 +858,46 @@
     r.readAsText(file);
   }
 
+  // ---------- BPM hold-to-accelerate ----------
+  // A tap on + / − is exactly 1 BPM. Holding repeats 1-BPM steps after HOLD.delay ms, the gap between steps
+  // shrinking geometrically, gap(n) = max(HOLD.min, HOLD.start * HOLD.decay^n), so it reaches the steady fast rate
+  // about 1.5 s into the hold; 90 -> 150 takes about 3.3 s. Playback reads the BPM every step, so the tempo follows
+  // live. The whole hold is one undo step and is saved once, on release.
+  var BPM_MIN = 30, BPM_MAX = 300, HOLD = { delay: 400, start: 250, decay: 0.8, min: 36 };
+  function clampBpm(v) { return Math.max(BPM_MIN, Math.min(BPM_MAX, Math.round(v) || 90)); }
+  var hold = null, holdLog = [];
+  function holdStep() {
+    var p = project(), v = clampBpm(p.bpm + hold.dir);
+    if (v === p.bpm) { endHold(); return false; }
+    p.bpm = v; els.bpm.value = v; holdLog.push({ t: Math.round(performance.now() - hold.t0), bpm: v });
+    if (v === BPM_MIN || v === BPM_MAX) { endHold(); return false; }
+    return true;
+  }
+  function holdNext() {
+    var gap = Math.max(HOLD.min, HOLD.start * Math.pow(HOLD.decay, hold.n++));
+    hold.timer = setTimeout(function () { if (hold && holdStep()) holdNext(); }, gap);
+  }
+  function endHold() {
+    if (!hold) return;
+    clearTimeout(hold.timer); hold = null;
+    checkpoint(); save();
+  }
+  function bindBpmHold(btn, dir) {
+    btn.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return;
+      e.preventDefault(); // no text selection / focus steal / ghost click
+      endHold();
+      hold = { dir: dir, n: 0, t0: performance.now(), timer: null }; holdLog = [{ t: 0, bpm: project().bpm }];
+      if (holdStep()) hold.timer = setTimeout(function () { if (hold && holdStep()) holdNext(); }, HOLD.delay);
+    });
+    ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture'].forEach(function (ev) { btn.addEventListener(ev, endHold); });
+    btn.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    // Keyboard (Enter / Space on the focused button) still steps 1; pointer clicks were already handled on pointerdown.
+    btn.addEventListener('click', function (e) { if (e.detail === 0) { var p = project(); p.bpm = clampBpm(p.bpm + dir); els.bpm.value = p.bpm; checkpoint(); save(); } });
+  }
+  window.addEventListener('blur', endHold);
+  document.addEventListener('visibilitychange', function () { if (document.hidden) endHold(); });
+
   // ---------- events ----------
   function on(id, ev, fn) { $(id).addEventListener(ev, fn); }
   function switchProject(id) { stopPlay(); lib.activeProjectId = id; cur = { cell: 0, str: 0 }; CL = cellsOf(); cur.cell = M.cellIndexAt(CL, phTick()); save(); render(); }
@@ -808,11 +907,12 @@
     on('play-start', 'click', backToStart);
     on('stop-btn', 'click', function () { stopPlay({ user: true }); });
     els.loopToggle.addEventListener('click', function () { var L = project().loop; L.enabled = !L.enabled; changed(); restartIfPlaying(); toast(L.enabled ? 'Loop on: bars ' + L.startMeasure + '–' + L.endMeasure : 'Loop off'); });
-    var setBpm = function (v) { var p = project(); p.bpm = Math.max(30, Math.min(300, Math.round(v) || 90)); els.bpm.value = p.bpm; checkpoint(); save(); };
-    on('bpm-down', 'click', function () { setBpm(project().bpm - 1); });
-    on('bpm-up', 'click', function () { setBpm(project().bpm + 1); });
+    var setBpm = function (v) { var p = project(); p.bpm = clampBpm(v); els.bpm.value = p.bpm; checkpoint(); save(); };
+    bindBpmHold(els.bpmDown, -1); bindBpmHold(els.bpmUp, 1);
     els.bpm.addEventListener('change', function () { setBpm(Number(els.bpm.value)); });
     els.gridSelect.addEventListener('change', function () { setGrid(els.gridSelect.value); });
+    els.gridDot.addEventListener('click', function () { toggleStyle('dotted'); });
+    els.gridTrip.addEventListener('click', function () { toggleStyle('triplet'); });
     on('prev-col', 'click', function () { moveStep(-1); });
     on('next-col', 'click', nextStep);
     on('undo-btn', 'click', undo);
@@ -947,7 +1047,7 @@
     on('hint-ok', 'click', function () { els.hint.hidden = true; try { localStorage.setItem(HINT_KEY, '1'); } catch (e) { /* ignore */ } });
 
     // Keyboard (when present): Space play/pause, Ctrl/Cmd+Z undo, Shift+Ctrl/Cmd+Z or Ctrl+Y redo, Home back to start,
-    // L loop, arrows move; digits/x/Backspace edit while the picker is open; Esc closes.
+    // L loop, [ / ] coarser / finer grid, . dotted, T triplet, arrows move; digits/x/Backspace edit while the picker is open; Esc closes.
     var buf = '', bufT = null;
     document.addEventListener('keydown', function (e) {
       var t = e.target, typing = t && (t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && t.type !== 'range'));
@@ -960,6 +1060,9 @@
       else if (k === ' ' && !pickerOpen) { playPause(); e.preventDefault(); }
       else if (k === 'Home' && !pickerOpen) { backToStart(); e.preventDefault(); }
       else if ((k === 'l' || k === 'L') && !pickerOpen) { els.loopToggle.click(); }
+      else if ((k === '[' || k === ']') && !pickerOpen) { stepGridValue(k === ']' ? 1 : -1); e.preventDefault(); }
+      else if (k === '.' && !pickerOpen) { toggleStyle('dotted'); e.preventDefault(); }
+      else if ((k === 't' || k === 'T') && !pickerOpen) { toggleStyle('triplet'); e.preventDefault(); }
       else if (drawerOpen) return;
       else if (k === 'ArrowLeft') { moveStep(-1); e.preventDefault(); }
       else if (k === 'ArrowRight') { moveStep(1); e.preventDefault(); }
@@ -979,7 +1082,7 @@
       var r = loadLibrary(); if (!r.restored) return;
       lib = r.lib; hist = {}; render();
     });
-    window.addEventListener('resize', function () { syncRulerWidths(); if (pickerOpen) fitPicker(); });
+    window.addEventListener('resize', function () { syncRulerWidths(); fitPos(); if (pickerOpen) fitPicker(); });
   }
 
   function init() {
@@ -1009,6 +1112,8 @@
     editStep: function () { return cur.cell; }, cells: function () { return JSON.parse(JSON.stringify(CL)); }, grid: function () { return JSON.parse(JSON.stringify(grid())); },
     audible: function () { return M.audibleTracks(project()).map(function (t) { return t.id; }); },
     history: function () { var h = H(); return { undo: h.undo.length, redo: h.redo.length }; },
-    lastNote: function () { return A.lastNote(); }, scheduled: function () { return A.scheduled(); } };
+    lastNote: function () { return A.lastNote(); }, scheduled: function () { return A.scheduled(); },
+    bpmHold: function () { return { holding: !!hold, log: holdLog.slice(), curve: HOLD }; },
+    rhythm: function () { var p = project(); return groups(p, CL, buckets(track())).map(function (g) { return { len: g.len, beam: g.beam, beams: g.beamLevels, dot: g.dot, tp: g.tp, bracket: g.tpBracket, num: g.tpNum }; }); } };
   init();
 })();
