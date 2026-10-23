@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; manifest-src 'self'; worker-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0b1220">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="Sketch guitar riffs on your phone. Up to 3 layered tracks, six tunings, mute/solo/volume. Free, no account, nothing stored online.">
+<title>Guitar Tab · Jeremy Legal Records</title>
+<link rel="canonical" href="https://jeremylegalrecords.com/guitar-tab/app/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Jeremy Legal Records">
+<meta property="og:title" content="Guitar Tab · Jeremy Legal Records">
+<meta property="og:description" content="Sketch guitar riffs on your phone. Up to 3 layered tracks, six tunings, mute/solo/volume. Free, no account, nothing stored online.">
+<meta property="og:url" content="https://jeremylegalrecords.com/guitar-tab/app/">
+<meta property="og:image" content="https://jeremylegalrecords.com/guitar-tab/og.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Guitar Tab by Jeremy Legal Records: a phone showing three tab tracks, Rhythm, Lead and Bass, on one grid.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Guitar Tab · Jeremy Legal Records">
+<meta name="twitter:description" content="Sketch guitar riffs on your phone. Up to 3 layered tracks, six tunings, mute/solo/volume. Free, no account, nothing stored online.">
+<meta name="twitter:image" content="https://jeremylegalrecords.com/guitar-tab/og.png">
+<meta name="twitter:image:alt" content="Guitar Tab by Jeremy Legal Records: a phone showing three tab tracks, Rhythm, Lead and Bass, on one grid.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="../icons/favicon-32.png">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<link rel="stylesheet" href="../css/jlr-theme.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body class="daw">
+<div class="phone-col app">
+<header class="app-header">
+  <div class="bar">
+    <a class="brand" href="../" aria-label="Guitar Tab front page">
+      <img class="logo-mark" src="../assets/jlr-logo.png" alt="Jeremy Legal Records" width="107" height="160">
+      <span class="brand-title"><span class="w">JLR</span><span class="dot">•</span><span class="t">Guitar Tab</span></span>
+    </a>
+    <span class="save-state" id="save-state" aria-live="polite"></span>
+    <button type="button" class="icon-btn" id="menu-btn" aria-label="Menu: project, track, edit, files" aria-expanded="false" aria-controls="drawer" title="Menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- Transport bar -->
+<section class="transport" aria-label="Transport">
+  <button type="button" class="tb" id="play-start" aria-label="Back to start" title="Back to start (Home)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 5h2.2v14H6zM19 5.5v13L9.5 12z"/></svg></button>
+  <button type="button" class="tb play" id="play-btn" aria-label="Play" aria-pressed="false" title="Play (Space)">
+    <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 4.5v15L19.5 12z"/></svg>
+    <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.5 5h4v14h-4zM13.5 5h4v14h-4z"/></svg></button>
+  <button type="button" class="tb stop" id="stop-btn" aria-label="Stop" title="Stop (again: back to start)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 6h12v12H6z"/></svg></button>
+  <button type="button" class="tb loop" id="loop-toggle" aria-label="Loop" aria-pressed="false" title="Loop (L)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/></svg></button>
+  <div class="bpm">
+    <button type="button" class="tb sm" id="bpm-down" aria-label="Slower">−</button>
+    <label class="bpm-val"><input id="bpm" class="field" type="number" inputmode="numeric" min="30" max="300" step="1" aria-label="BPM"><small>BPM</small></label>
+    <button type="button" class="tb sm" id="bpm-up" aria-label="Faster">+</button>
+  </div>
+</section>
+
+<!-- Toolbar: grid (snap), step, position, undo/redo -->
+<section class="toolbar" aria-label="Edit tools">
+  <label class="grid-sel"><span>Grid</span><select id="grid-select" class="field" aria-label="Grid (note value per step)"></select></label>
+  <button type="button" class="tb sm" id="prev-col" aria-label="Previous step">‹</button>
+  <button type="button" class="tb sm" id="next-col" aria-label="Next step">›</button>
+  <output class="pos" id="ph-info" aria-label="Playhead position, bar|beat|16th">1|1|1</output>
+  <button type="button" class="tb sm" id="undo-btn" aria-label="Undo" title="Undo (Ctrl/Cmd+Z)" disabled>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
+  <button type="button" class="tb sm" id="redo-btn" aria-label="Redo" title="Redo (Shift+Ctrl/Cmd+Z)" disabled>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg></button>
+</section>
+
+<!-- Track headers (up to 3): tap the name to arm a track for editing -->
+<section class="tracks" id="tracks" aria-label="Tracks"></section>
+
+<!-- Ruler + tab grid (scrolls sideways inside; the page itself never scrolls) -->
+<section class="arrange" aria-label="Arrangement">
+  <div class="ruler-wrap" id="ruler-wrap" aria-label="Ruler: drag the top lane to set the loop, tap or drag the bottom lane to move the playhead">
+    <div class="ruler" id="ruler"></div>
+  </div>
+  <div class="editor-wrap" id="editor-wrap">
+    <div class="editor" id="editor" role="grid" aria-label="Tab grid"></div>
+  </div>
+</section>
+
+<!-- Pinned idea notes -->
+<footer class="idea-bar">
+  <input id="idea" class="field" type="text" maxlength="500" placeholder="Idea notes…" aria-label="Idea notes for this project" autocomplete="off" enterkeyhint="done">
+</footer>
+</div>
+
+<!-- First-run hint (once) -->
+<div class="hint-pop" id="hint" role="note" hidden>
+  <p>Tap a lane to add a fret. Tap it again to remove it.</p>
+  <p>Tap a track to edit it. M, S and the slider mix.</p>
+  <p>Drag the ruler's top lane to loop. Space plays.</p>
+  <button type="button" class="btn sm go" id="hint-ok">Got it</button>
+</div>
+
+<!-- Drawer: everything secondary -->
+<div class="sheet-scrim" id="drawer-scrim" hidden></div>
+<aside class="sheet drawer" id="drawer" aria-label="Menu" hidden>
+  <div class="sheet-head">
+    <span class="card-h">Menu</span>
+    <button type="button" class="btn sm go" id="drawer-close">Close</button>
+  </div>
+  <p class="song-info" id="song-info"></p>
+
+  <section class="card">
+    <label class="sec-lab" for="project-select">Project</label>
+    <select id="project-select" class="field" aria-label="Project"></select>
+    <label class="sec-lab mt" for="title">Title</label>
+    <input id="title" class="field" type="text" maxlength="120" placeholder="Untitled project" autocomplete="off" enterkeyhint="done">
+    <div class="grid3 mt-s">
+      <button type="button" class="btn sm" id="project-new">+ New</button>
+      <button type="button" class="btn sm" id="project-dup">Duplicate</button>
+      <button type="button" class="btn sm warn" id="project-del">Delete</button>
+    </div>
+    <label class="sec-lab mt" for="timesig">Time signature (whole project)</label>
+    <select id="timesig" class="field">
+      <option value="4/4">4/4</option><option value="3/4">3/4</option><option value="2/4">2/4</option><option value="6/8">6/8</option>
+    </select>
+  </section>
+
+  <section class="card">
+    <span class="sec-lab">Armed track</span>
+    <label class="sec-lab sub" for="track-name">Name</label>
+    <input id="track-name" class="field" type="text" maxlength="60" placeholder="Track name" autocomplete="off" enterkeyhint="done">
+    <label class="sec-lab sub mt-s" for="tuning">Tuning</label>
+    <select id="tuning" class="field"></select>
+    <button type="button" class="btn sm warn wide mt-s" id="track-del">Delete this track</button>
+  </section>
+
+  <section class="card">
+    <span class="sec-lab">Edit at the cursor</span>
+    <div class="grid2">
+      <button type="button" class="btn sm" id="add-col">+ Insert step</button>
+      <button type="button" class="btn sm warn" id="del-col">− Delete step</button>
+      <button type="button" class="btn sm" id="add-measure">+ Add bar</button>
+      <button type="button" class="btn sm warn" id="del-measure">− Last bar</button>
+      <button type="button" class="btn sm" id="loop-start">Loop from this bar</button>
+      <button type="button" class="btn sm" id="loop-end">Loop to this bar</button>
+    </div>
+    <button type="button" class="btn sm wide mt-s" id="clear-col">Clear this step (armed track)</button>
+    <p class="loop-info" id="loop-info"></p>
+  </section>
+
+  <section class="card">
+    <span class="sec-lab">Files</span>
+    <div class="grid2">
+      <button type="button" class="btn sm go" id="export-one">Export project (.json)</button>
+      <button type="button" class="btn sm" id="export-all">Export all (.json)</button>
+      <button type="button" class="btn sm" id="import-btn">Import (.json)</button>
+      <button type="button" class="btn sm" id="share-btn" hidden>Share project</button>
+    </div>
+    <input type="file" id="import-file" accept=".json,application/json" hidden>
+    <p class="note">Saved in this browser only. Export is your backup and how you move a project to another device.</p>
+    <p class="note">Used the old address (maximini22.github.io/github-tab)? Saved work doesn't carry over between web addresses: Export there, then Import here.</p>
+  </section>
+
+  <section class="card">
+    <div class="card-row"><span class="sec-lab">Tab as text</span><button type="button" class="btn sm" id="copy-ascii">Copy</button></div>
+    <pre class="ascii" id="ascii" aria-label="Tab as text"></pre>
+  </section>
+
+  <p class="links"><a href="https://github.com/maximini22/github-tab/blob/main/docs/USER-GUIDE.md" rel="noopener noreferrer" target="_blank">User guide</a> · <a href="../">About Guitar Tab</a></p>
+</aside>
+
+<!-- Fret picker: vertical neck, nut at the top -->
+<div class="sheet-scrim" id="scrim" hidden></div>
+<section class="sheet" id="picker" role="dialog" aria-modal="true" aria-labelledby="picker-h" hidden>
+  <div class="sheet-head">
+    <div>
+      <span class="card-h" id="picker-h">Pick a fret</span>
+      <span class="picker-sub" id="picker-sub"></span>
+    </div>
+    <button type="button" class="btn sm go" id="picker-done">Done</button>
+  </div>
+  <div class="picker-body">
+    <div class="neck" id="neck" role="group" aria-label="Frets 0 to 16"></div>
+    <div class="picker-side">
+      <span class="sec-lab">String</span>
+      <div class="pstrings" id="picker-strings" role="radiogroup" aria-label="String, high at the top, low at the bottom"></div>
+      <button type="button" class="btn sm" id="pick-mute">x Muted</button>
+      <button type="button" class="btn sm" id="pick-clear">Clear</button>
+      <p class="picker-tip" id="picker-tip" aria-live="polite"></p>
+      <p class="picker-grid" id="picker-grid"></p>
+      <button type="button" class="btn sm" id="picker-next">Next step ›</button>
+    </div>
+  </div>
+</section>
+
+<!-- Import choice -->
+<div class="sheet-scrim" id="modal-scrim" hidden></div>
+<section class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-h" hidden>
+  <span class="card-h" id="modal-h">Import</span>
+  <p id="modal-body"></p>
+  <div class="modal-actions" id="modal-actions"></div>
+</section>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="js/audio.js"></script>
+<script src="js/model.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

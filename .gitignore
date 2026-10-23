@@ -8,3 +8,5 @@ assets/fonts/fonts.css
 *.bundle
 *-private.*
 !royalty-dashboard/img/*.png
+!royalty-dashboard/og.png
+!guitar-tab/**/*.png
