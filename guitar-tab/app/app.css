@@ -382,3 +382,27 @@ body.daw { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; backg
 .mk.k5 { left: 91.667%; }
 .mk.barre { width: auto; height: 12px; margin: -6px 0 0 0; border-radius: 6px; background: var(--sel); opacity: .55; z-index: 1; box-shadow: none; }
 .cneck .frow.hit .dots i { opacity: .25; }
+
+/* v8.1: chart-order boxes (string names under the box), movable shapes (root string, ‹ fret ›, 3 / 2 notes) */
+.ccard svg { height: 100px; }
+.ccard.mv .cq { color: var(--teal); }
+.cd-name span small { font-size: .62rem; color: var(--dim); }
+.cd-move { display: flex; align-items: center; gap: 6px; margin: -2px 0 6px; flex-wrap: nowrap; }
+.cd-move[hidden] { display: none; }
+.cd-rootlab { font: 700 .62rem var(--font); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.cd-rootlab:empty { display: none; }
+.cd-move .seg, .cd-move .step { display: inline-flex; gap: 0; }
+.cd-move .seg[hidden] { display: none; }
+.cd-move .btn { min-height: 34px; padding: 0 9px; font-size: .8rem; border-radius: 0; }
+.cd-move .seg .btn:first-child, .cd-move .step .btn:first-child { border-radius: 9px 0 0 9px; }
+.cd-move .seg .btn:last-child, .cd-move .step .btn:last-child { border-radius: 0 9px 9px 0; }
+.cd-move .seg .btn + .btn { margin-left: -1px; }
+.cd-move .seg .btn.on { border-color: var(--teal); color: var(--teal); background: var(--teal-dim); position: relative; z-index: 1; }
+.cd-move .step .btn { font-size: 1.15rem; line-height: 1; width: 36px; padding: 0; }
+.cd-move .step .btn:disabled { opacity: .35; }
+.cd-move output { display: flex; align-items: center; justify-content: center; min-width: 58px; height: 34px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  font: 800 .85rem var(--mono); color: var(--sel); white-space: nowrap; }
+.cd-move #cd-ns { margin-left: auto; }
+.cneck-cap { margin: 0 0 2px; font: 600 .6rem/12px var(--font); color: var(--dim); text-align: center; letter-spacing: .02em; }
+.cneck .frow.gap { border-top: 3px dashed rgba(154,166,184,.5); }
+@media (max-width: 370px) { .cd-move { gap: 4px; } .cd-move .btn { padding: 0 6px; } .cd-move .step .btn { width: 30px; } .cd-move output { min-width: 50px; } }

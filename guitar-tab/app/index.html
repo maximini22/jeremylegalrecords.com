@@ -217,14 +217,15 @@
   </div>
 </section>
 
-<!-- Chord library (opened from the step editor): boxes drawn like the app's neck, high e on the left -->
+<!-- Chord library (opened from the step editor): boxes and codes like a chord chart (low E on the left); the detail's
+     full neck is the app's neck (high e on the left). Power and barre chords are movable (root string + fret stepper). -->
 <div class="sheet-scrim csheet-scrim" id="chords-scrim" hidden></div>
 <section class="sheet csheet" id="chords" role="dialog" aria-modal="true" aria-labelledby="chords-h" hidden>
   <div class="sheet-head">
     <div class="ph-text"><span class="card-h" id="chords-h">Chord library</span><span class="picker-sub" id="chords-sub"></span></div>
     <button type="button" class="btn sm" id="chords-close">Close</button>
   </div>
-  <label class="csearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg><input class="field" type="search" id="chords-q" placeholder="Search: Em, F#m, power, sus…" aria-label="Search chords" autocomplete="off" spellcheck="false"></label>
+  <label class="csearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg><input class="field" type="search" id="chords-q" placeholder="Search: Em, F#5, 244, sus…" aria-label="Search chords" autocomplete="off" spellcheck="false"></label>
   <div class="cfilters" id="chords-fam" role="group" aria-label="Chord families"></div>
   <div class="cwrap-o"><div class="cwrap" id="chords-list"></div></div>
   <p class="cfoot" id="chords-foot"></p>
@@ -232,13 +233,19 @@
     <div class="cd-head">
       <div class="cd-name"><b id="cd-name"></b><span id="cd-info"></span></div>
     </div>
+    <div class="cd-move" id="cd-move" role="group" aria-label="Move the shape" hidden>
+      <span class="cd-rootlab" id="cd-rootlab">Root</span>
+      <span class="seg"><button type="button" class="btn sm" id="cd-s6" aria-pressed="true">6th</button><button type="button" class="btn sm" id="cd-s5" aria-pressed="false">5th</button></span>
+      <span class="step"><button type="button" class="btn sm" id="cd-down" aria-label="Down one fret">‹</button><output id="cd-fret" aria-live="polite">fret 0</output><button type="button" class="btn sm" id="cd-up" aria-label="Up one fret">›</button></span>
+      <span class="seg" id="cd-ns"><button type="button" class="btn sm" id="cd-n3" aria-pressed="true" aria-label="3 notes: root, 5th, octave">1·5·8</button><button type="button" class="btn sm" id="cd-n2" aria-pressed="false" aria-label="2 notes: root and 5th">1·5</button></span>
+    </div>
     <p class="cd-note" id="cd-note" hidden></p>
     <div class="roll-cap"><span id="cd-bar"></span><span id="cd-cap"></span></div>
     <div class="roll" id="cd-roll" aria-hidden="true"></div>
     <div class="picker-body cbody">
-      <div class="cneck"><div class="cstr" id="cd-str" aria-hidden="true"></div><div class="neck" id="cd-neck" role="img"></div></div>
+      <div class="cneck"><p class="cneck-cap">Neck view · high e on the left</p><div class="cstr" id="cd-str" aria-hidden="true"></div><div class="neck" id="cd-neck" role="img"></div></div>
       <div class="picker-side cside">
-        <span class="sec-lab">Shape <small>high e first</small></span>
+        <span class="sec-lab">Strings <small>low E first</small></span>
         <div class="cside-chips" id="cd-chips"></div>
         <div class="pk2" role="group" aria-label="How to drop it">
           <button type="button" class="btn sm on" id="cd-strum" aria-pressed="true">Strum ↓</button>

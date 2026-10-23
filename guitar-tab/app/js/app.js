@@ -790,14 +790,16 @@
 
   // ---------- chord library ----------
   // Opened from the step editor. Shapes come from chords.json (precached by the service worker); names are worked out
-  // against the armed track's tuning (TabChords.label). Boxes and the preview neck put high e on the LEFT, like the neck.
-  var C = window.TabChords, CH = { list: null, loading: null, open: false, fam: 'all', q: '', sel: null, mode: 'strum' };
+  // against the armed track's tuning (TabChords.label). Boxes and fret codes read like a chord chart (low E on the
+  // left); the detail's full neck stays the app's neck (high e on the left), and both are labelled. Power and barre
+  // chords are movable (TabChords.make): the detail has a root-string toggle and a ‹ fret › stepper, CH.mv.
+  var C = window.TabChords, CH = { data: null, list: null, listKey: '', loading: null, open: false, fam: 'all', q: '', sel: null, mv: null, mode: 'strum' };
   var CFAMS = [['all', 'All'], ['open', 'Open'], ['power', 'Power'], ['barre', 'Barre'], ['other', 'Other']];
   var CFAM_HEAD = { open: 'Open chords', power: 'Power chords', barre: 'Barre chords', other: 'Other' };
   function loadChords() {
-    if (CH.list) return Promise.resolve(CH.list);
+    if (CH.data) return Promise.resolve(refreshChordList());
     if (!CH.loading) CH.loading = fetch('chords.json').then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(function (d) { CH.list = d.chords; return CH.list; }).catch(function (e) { CH.loading = null; throw e; });
+      .then(function (d) { CH.data = d; refreshChordList(); return CH.list; }).catch(function (e) { CH.loading = null; throw e; });
     return CH.loading;
   }
   function chordStep() { var c = cell(), m = c.measure, f = firstOf(m), n = 0; CL.forEach(function (x) { if (x.measure === m) n++; }); return { bar: m, step: cur.cell - f + 1, of: n }; }
@@ -805,18 +807,32 @@
   function openChords() {
     if (!pickerOpen) return;
     loadChords().then(function () {
-      CH.open = true; CH.sel = null; CH.q = ''; $('chords-q').value = ''; els.toast.hidden = true;
+      CH.open = true; CH.sel = null; CH.mv = null; CH.q = ''; $('chords-q').value = ''; els.toast.hidden = true;
       $('chords').hidden = false; $('chords-scrim').hidden = false; els.chordsOpen.classList.add('on');
       renderChords(); $('chords-list').scrollTop = 0; $('chords-q').focus({ preventScroll: true });
     }).catch(function () { toast("Couldn't load the chord library. Check your connection and try again."); });
   }
   function closeChords() {
-    CH.open = false; CH.sel = null; $('chords').hidden = true; $('chords-scrim').hidden = true; els.chordsOpen.classList.remove('on');
+    CH.open = false; CH.sel = null; CH.mv = null; $('chords').hidden = true; $('chords-scrim').hidden = true; els.chordsOpen.classList.remove('on');
     if (pickerOpen) { renderPicker(); els.chordsOpen.focus({ preventScroll: true }); }
   }
+  // The card list for the armed track's tuning (movable shapes are rebuilt when the tuning changes).
+  function refreshChordList() {
+    var midi = track().tuning.midi, key = midi.join();
+    if (CH.data && CH.listKey !== key) { CH.list = C.expand(CH.data, midi); CH.listKey = key; }
+    return CH.list;
+  }
   function chordById(id) { return (CH.list || []).filter(function (c) { return c.id === id; })[0] || null; }
+  // The chord in the detail view: a card as is, or a movable shape at the stepper's fret.
+  function selChord() {
+    if (!CH.sel) return null;
+    if (CH.mv) return C.make(CH.mv.shape, CH.mv.r, track().tuning.midi, CH.mv.n, CH.sel);
+    return chordById(CH.sel);
+  }
+  function lowLabels(tr) { return M.tuningLabels(tr.tuning).slice().reverse(); } // low E first, for chord boxes
   function renderChords() {
-    var tr = track(), midi = tr.tuning.midi, sh = $('chords'), detail = !!CH.sel;
+    refreshChordList();
+    var tr = track(), midi = tr.tuning.midi, sh = $('chords'), detail = !!CH.sel, labs = lowLabels(tr);
     $('chords-sub').textContent = chordSub();
     sh.classList.toggle('detail', detail);
     var found = C.search(CH.list, CH.q, midi), counts = {};
@@ -834,15 +850,15 @@
       html += '<h3 class="cgh"><span class="sec-lab">' + CFAM_HEAD[k] + '</span><small>' + l.length + '</small></h3><div class="cgrid">';
       l.forEach(function (c) {
         var lb = C.label(c, midi), sel = CH.sel === c.id;
-        html += '<button type="button" class="ccard' + (sel ? ' sel' : '') + '" data-id="' + esc(c.id) + '" aria-label="' + esc(lb.text + ', ' + C.QUALITY_LONG[c.quality] + ', ' + C.code(c, true).split('').join(' ') + ' high e first') + '"' + (sel ? ' aria-current="true"' : '') + '>' +
+        html += '<button type="button" class="ccard' + (sel ? ' sel' : '') + (c.movable ? ' mv' : '') + '" data-id="' + esc(c.id) + '" aria-label="' + esc(lb.text + ', ' + C.QUALITY_LONG[c.quality] + (c.movable ? ', movable, ' + C.qualityLine(c) : '') + ', frets low E to high e: ' + C.codeFull(c).split(c.frets.some(function (f) { return f > 9; }) ? '-' : '').join(' ')) + '"' + (sel ? ' aria-current="true"' : '') + '>' +
           '<span><span class="cn' + (lb.name.length > 5 ? ' long' : '') + '">' + esc(lb.name) + '</span><span class="cq">' + esc(lb.exact ? C.qualityLine(c) : lb.shift === null ? 'shape · ' + c.quality : c.name + ' shape · ' + c.quality) + '</span>' +
-          '<span class="cf" title="Frets, high e first (as drawn)"><i>e </i>' + C.code(c, true) + '</span></span>' + C.box(c, { sel: sel }) + (sel ? '<span class="tag">Preview</span>' : '') + '</button>';
+          '<span class="cf" title="Frets, low E to high e">' + esc(C.code(c)) + '</span></span>' + C.box(c, { sel: sel, labels: labs }) + (sel ? '<span class="tag">Preview</span>' : '') + '</button>';
       });
       html += '</div>';
     });
     list.innerHTML = any ? html : '<p class="cempty">No chords match "' + esc(CH.q) + '".</p>';
     var st = chordStep();
-    $('chords-foot').textContent = 'Tap a chord to preview it at bar ' + st.bar + ' · step ' + st.step + '. Boxes are drawn like the app\u2019s neck: high e on the left.';
+    $('chords-foot').textContent = 'Tap a chord to preview it at bar ' + st.bar + ' · step ' + st.step + '. Boxes and codes read like a chord chart, low E \u2192 high e. Power and barre chords slide up the neck with \u2039 fret \u203a.';
     $('chords-detail').hidden = !detail;
     if (detail) renderChordDetail(); else sh.classList.remove('nolist');
   }
@@ -853,33 +869,56 @@
     return ns.map(function (n, k) { return { string: n.string, fret: n.fret, cell: CH.mode === 'arp' ? cur.cell + k : cur.cell }; });
   }
   function renderChordDetail() {
-    var c = chordById(CH.sel), tr = track(), midi = tr.tuning.midi, lb = C.label(c, midi), labels = M.tuningLabels(tr.tuning);
+    var c = selChord(), tr = track(), midi = tr.tuning.midi, lb = C.label(c, midi), labels = M.tuningLabels(tr.tuning), mv = c.movable;
     $('cd-name').textContent = lb.name;
-    $('cd-info').innerHTML = esc(lb.exact ? C.QUALITY_LONG[c.quality] : lb.shift === null ? C.QUALITY_LONG[c.quality] + ' shape' : c.name + ' shape') + ' · e→E <em>' + C.code(c, true) + '</em> · E→e <em>' + C.code(c) + '</em>';
+    $('cd-info').innerHTML = esc(lb.exact ? C.QUALITY_LONG[c.quality] : lb.shift === null ? C.QUALITY_LONG[c.quality] + ' shape' : c.name + ' shape') + ' · <em>' + esc(C.code(c)) + '</em> <small>low E \u2192 high e</small>';
     var note = $('cd-note'); note.hidden = lb.exact; note.textContent = lb.exact ? '' : lb.note;
+    // movable shapes: root string toggle, ‹ fret › stepper, 3 / 2 notes (power)
+    $('cd-move').hidden = !mv;
+    if (mv) {
+      var pw = c.family === 'power';
+      $('cd-s6').textContent = pw ? '6th' : 'E shape'; $('cd-s5').textContent = pw ? '5th' : 'A shape';
+      $('cd-s6').setAttribute('aria-label', pw ? 'Root on the 6th string' : 'E shape: root on the 6th string');
+      $('cd-s5').setAttribute('aria-label', pw ? 'Root on the 5th string' : 'A shape: root on the 5th string');
+      $('cd-rootlab').textContent = pw ? 'Root' : '';
+      setToggle($('cd-s6'), mv.string === 6); setToggle($('cd-s5'), mv.string === 5);
+      $('cd-fret').textContent = 'fret ' + mv.r;
+      $('cd-fret').setAttribute('aria-label', 'Root fret ' + mv.r + ' on the ' + (mv.string === 6 ? '6th' : '5th') + ' string');
+      $('cd-down').disabled = mv.r <= mv.min; $('cd-up').disabled = mv.r >= mv.max;
+      $('cd-ns').hidden = !pw;
+      setToggle($('cd-n3'), mv.n !== 2); setToggle($('cd-n2'), mv.n === 2);
+    }
     // preview roll: the planned notes in yellow over this bar (anything past this page/bar isn't shown)
     var pv = {}, plan = chordPlan(c), lastCell = CL.length - 1, beyond = 0;
     plan.forEach(function (n) { if (n.cell > lastCell || CL[n.cell].measure !== cell().measure) { beyond++; return; } (pv[n.cell] = pv[n.cell] || {})[n.string - 1] = String(n.fret); });
-    c.frets.forEach(function (f, i) { if (f === null && CH.mode === 'strum') (pv[cur.cell] = pv[cur.cell] || {}); });
     renderRoll(pv, $('cd-roll'), $('cd-bar'));
     $('cd-cap').textContent = CH.mode === 'arp' ? 'Arp · ' + plan.length + ' steps' + (beyond ? ' (' + beyond + ' into the next bar)' : '') : 'Strum · ' + plan.length + ' notes stacked';
     $('cd-roll').className += ' cdroll';
-    // neck header: string names, high e first
+    // full-neck header: the app's neck, high e on the left (labelled, since the boxes are the other way round)
     var hs = '<span>fret</span>'; for (var si = 0; si < M.STRINGS; si++) hs += '<span>' + esc(labels[si]) + '</span>'; $('cd-str').innerHTML = hs;
-    // shape chips, high e first
+    // string chips, low E first (chart order, same as the code)
     var chips = '';
-    for (si = 0; si < M.STRINGS; si++) {
-      var i = 5 - si, v = c.frets[i];
-      chips += '<span class="chip' + (v > 0 ? ' fr' : v === null ? ' mu' : '') + '"><b>' + esc(labels[si]) + '</b><small>' + (v === null ? 'muted' : v === 0 ? 'open' : 'fret ' + v + ' · finger ' + c.fingers[i]) + '</small></span>';
+    for (var i = 0; i < M.STRINGS; i++) {
+      var v = c.frets[i], lab = labels[5 - i];
+      chips += '<span class="chip' + (v > 0 ? ' fr' : v === null ? ' mu' : '') + '"><b>' + esc(lab) + '</b><small>' + (v === null ? 'muted' : v === 0 ? 'open' : 'fret ' + v + ' · finger ' + c.fingers[i]) + '</small></span>';
     }
     $('cd-chips').innerHTML = chips;
     setToggle($('cd-strum'), CH.mode === 'strum'); setToggle($('cd-arp'), CH.mode === 'arp');
-    $('cd-neck').setAttribute('aria-label', lb.text + ' on the neck: ' + C.code(c, true).split('').join(' ') + ', high e first');
+    $('cd-neck').setAttribute('aria-label', lb.text + ' on the app neck (high e on the left). Frets low E to high e: ' + C.codeFull(c));
     fitChords();
   }
+  // Neck rows: frets 0..rows-1, or (shapes high up the neck) the open-string row, then a window round the shape.
+  function neckFrets(c, rows) {
+    var fr = c.frets.filter(function (f) { return f > 0; }), maxF = fr.length ? Math.max.apply(null, fr) : 0, minF = fr.length ? Math.min.apply(null, fr) : 0, out = [0], k;
+    if (maxF + 2 <= rows) { for (k = 1; k < rows; k++) out.push(k); return out; }
+    var lo = Math.max(1, Math.min(minF - 1, M.MAX_FRET - (rows - 2)));
+    if (maxF > lo + rows - 2) lo = maxF - (rows - 2);
+    for (k = 0; k < rows - 1; k++) out.push(lo + k);
+    return out;
+  }
   function chordNeck(c, rows) {
-    var hi = c.frets.slice().reverse(), fi = c.fingers.slice().reverse(), h = '';
-    for (var f = 0; f < rows; f++) {
+    var hi = c.frets.slice().reverse(), fi = c.fingers.slice().reverse(), h = '', list = neckFrets(c, rows);
+    list.forEach(function (f, ri) {
       var mk = '', hit = false;
       hi.forEach(function (v, i) {
         var col = ' k' + i; // column class (no inline styles: the CSP is style-src 'self')
@@ -889,8 +928,8 @@
       });
       if (c.barre && c.barre.fret === f) mk = '<i class="mk barre" data-a="' + (6 - c.barre.to) + '" data-b="' + (6 - c.barre.from) + '"></i>' + mk;
       var dots = ''; for (var d = 0; d < (INLAYS[f] || 0); d++) dots += '<i></i>';
-      h += '<div class="frow' + (f === 0 ? ' open' : '') + (INLAYS[f] ? ' inlay' : '') + (hit ? ' hit' : '') + '"><span class="n">' + f + '</span><span class="board"><span class="dots">' + dots + '</span>' + mk + '</span></div>';
-    }
+      h += '<div class="frow' + (f === 0 ? ' open' : '') + (ri === 1 && f > 1 ? ' gap' : '') + (INLAYS[f] ? ' inlay' : '') + (hit ? ' hit' : '') + '"><span class="n">' + f + '</span><span class="board"><span class="dots">' + dots + '</span>' + mk + '</span></div>';
+    });
     $('cd-neck').innerHTML = h;
     // the barre bar spans columns a..b (high e first); set through CSSOM, which the CSP allows
     Array.prototype.forEach.call($('cd-neck').querySelectorAll('.mk.barre'), function (el) {
@@ -901,9 +940,10 @@
   // Fit the detail view to the sheet without scrolling: keep the chord list band if there's room (else drop it), then
   // show as many neck rows as fit (at least frets 0..max(5, highest fret + 1)), shrinking rows from 22px to 16px.
   function fitChords() {
-    var sh = $('chords'), body = sh.querySelector('.cbody'), side = sh.querySelector('.cside'), c = chordById(CH.sel);
+    var sh = $('chords'), body = sh.querySelector('.cbody'), side = sh.querySelector('.cside'), c = selChord();
     if (!c) return;
-    var maxF = Math.max.apply(null, c.frets.map(function (f) { return f || 0; })), minRows = Math.max(5, maxF + 1) + 1;
+    var fr = c.frets.filter(function (f) { return f > 0; }), maxF = fr.length ? Math.max.apply(null, fr) : 0, minF = fr.length ? Math.min.apply(null, fr) : 0;
+    var minRows = Math.max(6, Math.min(maxF + 2, maxF - minF + 4));
     function tryFit(withList) {
       sh.classList.toggle('nolist', !withList);
       body.style.setProperty('--cchip', '30px');
@@ -925,18 +965,28 @@
     if (cardEl && !sh.classList.contains('nolist')) $('chords-list').scrollTop = Math.max(0, cardEl.offsetTop - 40);
   }
   function previewChord(c) {
+    if (!c) return;
     var tr = track(), ps = C.pitches(c, tr.tuning.midi), gap = CH.mode === 'arp' ? 170 : 28;
     ps.forEach(function (m, k) { if (!k) A.preview(m); else setTimeout(function () { A.preview(m); }, k * gap); });
   }
   function selectChord(id) {
     var c = chordById(id); if (!c) return;
-    CH.sel = id; renderChords(); previewChord(c);
+    CH.sel = id; CH.mv = c.movable ? { shape: c.movable.shape, r: c.movable.r, n: c.movable.n } : null;
+    renderChords(); previewChord(c);
+  }
+  // Movable shapes: slide the root fret, switch the root string (same root note), or 3 / 2 notes (power chords).
+  function moveChord(fn) {
+    if (!CH.mv) return;
+    var midi = track().tuning.midi; fn(CH.mv, midi);
+    var c = C.make(CH.mv.shape, CH.mv.r, midi, CH.mv.n); CH.mv.r = c.movable.r;
+    if (c.family === 'power') { var card = 'P-' + c.name.slice(0, -1); if (chordById(card)) CH.sel = card; } // follow the root's card
+    renderChords(); previewChord(selChord());
   }
   // Drop: up to six notes on the armed track at the cursor step (Arp: one step apart, low string first, adding bars
   // at the end of the song if needed). Muted (x) strings are skipped; notes already on the chord's strings in the
   // target step are replaced. One undo step.
   function dropChord() {
-    var c = chordById(CH.sel); if (!c) return;
+    var c = selChord(); if (!c) return;
     var p = project(), tr = track(), plan = chordPlan(c), lb = C.label(c, tr.tuning.midi), st = chordStep();
     var need = plan.length ? plan[plan.length - 1].cell : cur.cell;
     while (need > CL.length - 1 && M.measureCount(p) < M.LIMITS.measures) { p.lengthTicks += M.measureTicks(p); M.recompute(p); CL = cellsOf(); }
@@ -960,10 +1010,16 @@
     on('chords-q', 'input', function () { CH.q = $('chords-q').value; renderChords(); $('chords-list').scrollTop = 0; });
     on('chords-fam', 'click', function (e) { var b = e.target.closest('.chip'); if (!b) return; CH.fam = b.dataset.fam; renderChords(); $('chords-list').scrollTop = 0; });
     on('chords-list', 'click', function (e) { var b = e.target.closest('.ccard'); if (b) selectChord(b.dataset.id); });
-    on('cd-strum', 'click', function () { CH.mode = 'strum'; renderChordDetail(); previewChord(chordById(CH.sel)); });
-    on('cd-arp', 'click', function () { CH.mode = 'arp'; renderChordDetail(); previewChord(chordById(CH.sel)); });
+    on('cd-strum', 'click', function () { CH.mode = 'strum'; renderChordDetail(); previewChord(selChord()); });
+    on('cd-arp', 'click', function () { CH.mode = 'arp'; renderChordDetail(); previewChord(selChord()); });
+    on('cd-down', 'click', function () { moveChord(function (m) { m.r--; }); });
+    on('cd-up', 'click', function () { moveChord(function (m) { m.r++; }); });
+    function toString(n) { return function () { moveChord(function (m, midi) { var sh = C.SHAPES[m.shape]; if (sh.string === n) return; m.r = C.pairFret(m.shape, m.r, midi, m.n || 3); m.shape = sh.pair; }); }; }
+    on('cd-s6', 'click', toString(6)); on('cd-s5', 'click', toString(5));
+    on('cd-n3', 'click', function () { moveChord(function (m) { m.n = 3; }); });
+    on('cd-n2', 'click', function () { moveChord(function (m) { m.n = 2; }); });
     on('cd-drop', 'click', dropChord);
-    on('cd-cancel', 'click', function () { CH.sel = null; renderChords(); });
+    on('cd-cancel', 'click', function () { CH.sel = null; CH.mv = null; renderChords(); });
   }
 
   // ---------- modal + toast ----------
@@ -1324,7 +1380,7 @@
     var buf = '', bufT = null;
     document.addEventListener('keydown', function (e) {
       var t = e.target, typing = t && (t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && t.type !== 'range'));
-      if (CH.open && e.key === 'Escape' && els.modal.hidden) { if (CH.sel) { CH.sel = null; renderChords(); } else closeChords(); e.preventDefault(); return; }
+      if (CH.open && e.key === 'Escape' && els.modal.hidden) { if (CH.sel) { CH.sel = null; CH.mv = null; renderChords(); } else closeChords(); e.preventDefault(); return; }
       if (typing || !els.modal.hidden || e.altKey) return;
       var k = e.key;
       if ((e.ctrlKey || e.metaKey) && (k === 'z' || k === 'Z')) { if (e.shiftKey) redo(); else undo(); e.preventDefault(); return; }
@@ -1387,7 +1443,8 @@
     trackCells: function (i) { return JSON.parse(JSON.stringify(cellsOf(project().tracks[i]))); }, shareLog: function () { return shareLog.slice(); },
     audible: function () { return M.audibleTracks(project()).map(function (t) { return t.id; }); },
     history: function () { var h = H(); return { undo: h.undo.length, redo: h.redo.length }; },
-    lastNote: function () { return A.lastNote(); }, chords: function () { return { open: CH.open, sel: CH.sel, mode: CH.mode, loaded: !!CH.list }; }, scheduled: function () { return A.scheduled(); },
+    lastNote: function () { return A.lastNote(); }, chords: function () { var c = CH.open ? selChord() : null; return { open: CH.open, sel: CH.sel, mode: CH.mode, loaded: !!CH.list, mv: CH.mv && { shape: CH.mv.shape, r: CH.mv.r, n: CH.mv.n },
+      cur: c && { name: c.name, code: C.code(c), frets: c.frets.slice(), fingers: c.fingers.slice(), barre: c.barre, notes: C.notes(c) } }; }, scheduled: function () { return A.scheduled(); },
     bpmHold: function () { return { holding: !!hold, log: holdLog.slice(), curve: HOLD }; },
     rhythm: function () { var p = project(); return groups(p, CL, buckets(track())).map(function (g) { return { len: g.len, beam: g.beam, beams: g.beamLevels, dot: g.dot, tp: g.tp, bracket: g.tpBracket, num: g.tpNum }; }); } };
   init();
