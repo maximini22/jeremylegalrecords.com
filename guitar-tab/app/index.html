@@ -97,9 +97,12 @@
   </div>
 </section>
 
-<!-- Pinned idea notes -->
+<!-- Lyrics / notes (v9.1): a two-line preview; tap to open the lyrics sheet -->
 <footer class="idea-bar">
-  <input id="idea" class="field" type="text" maxlength="500" placeholder="Idea notes…" aria-label="Idea notes for this project" autocomplete="off" enterkeyhint="done">
+  <button type="button" class="idea-prev" id="idea-open" aria-haspopup="dialog" aria-controls="lyrics" aria-label="Lyrics and notes. Open the lyrics sheet">
+    <span class="ip-text" id="idea-prev"></span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
+  </button>
 </footer>
 </div>
 
@@ -262,6 +265,43 @@
 </section>
 
 <!-- Import choice -->
+<!-- Lyrics sheet (v9.1): section chips, quick labels, the lyrics, and a docked mini transport. Opening it never
+     touches playback, so you can write while a loop repeats. -->
+<section class="sheet lsheet" id="lyrics" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="lyrics-h" hidden>
+  <div class="sheet-head">
+    <h2 class="card-h" id="lyrics-h">Lyrics</h2>
+    <span class="lcount" id="lyr-count" aria-live="off">0 / 5000</span>
+    <button type="button" class="btn sm go" id="lyr-done">Done</button>
+  </div>
+  <div class="lrow lchips" id="lyr-chips" role="toolbar" aria-label="Jump to a section"></div>
+  <div class="lrow lins" id="lyr-ins" role="toolbar" aria-label="Add a section label">
+    <button type="button" class="chip" data-label="Verse">+ Verse</button>
+    <button type="button" class="chip" data-label="Pre-chorus">+ Pre-chorus</button>
+    <button type="button" class="chip" data-label="Chorus">+ Chorus</button>
+    <button type="button" class="chip" data-label="Bridge">+ Bridge</button>
+    <button type="button" class="chip" data-label="Hook">+ Hook</button>
+    <button type="button" class="chip" data-label="Intro">+ Intro</button>
+    <button type="button" class="chip" data-label="Outro">+ Outro</button>
+  </div>
+  <div class="ledit">
+    <div class="lmirror" id="lyr-mirror" aria-hidden="true"></div>
+    <textarea id="idea" class="ltext" maxlength="5000" spellcheck="true" autocapitalize="sentences" placeholder="[Verse]&#10;Write here. A line like [Chorus] starts a section." aria-label="Lyrics and notes for this project"></textarea>
+  </div>
+  <div class="lmini" role="group" aria-label="Transport">
+    <button type="button" class="tb lrestart" id="lyr-restart" aria-label="Restart from bar 1" title="Restart (R or Home)">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 5h2.4v14H5zM20 5.5v13L9.5 12z"/></svg>
+      <span><b>Restart</b><small id="lyr-target">Bar 1</small></span></button>
+    <button type="button" class="tb play" id="lyr-play" aria-label="Play" aria-pressed="false" title="Play (Space)">
+      <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 4.5v15L19.5 12z"/></svg>
+      <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.5 5h4v14h-4zM13.5 5h4v14h-4z"/></svg></button>
+    <button type="button" class="tb stop" id="lyr-stop" aria-label="Stop" title="Stop">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 6h12v12H6z"/></svg></button>
+    <button type="button" class="tb click" id="lyr-click" aria-label="Metronome" aria-pressed="false" title="Metronome (M)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.2 3h5.6l4.2 18H5z"/><path d="M7 15h10"/><path d="M12 15l5.5-9"/></svg></button>
+    <span class="lpos" id="lyr-pos" title="Playhead bar|beat|16th">1|1|1</span>
+  </div>
+</section>
+
 <div class="sheet-scrim" id="modal-scrim" hidden></div>
 <section class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-h" hidden>
   <span class="card-h" id="modal-h">Import</span>

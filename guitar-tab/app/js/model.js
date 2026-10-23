@@ -8,7 +8,7 @@
   var PPQ = 480;
   var STRINGS = 6;
   var MAX_FRET = 22; // frets 0-22 (was 16 up to v5; files from then are a subset)
-  var LIMITS = { projects: 500, tracks: 3, importTracks: 64, measures: 999, notes: 20000, title: 120, name: 60, idea: 500 };
+  var LIMITS = { projects: 500, tracks: 3, importTracks: 64, measures: 999, notes: 20000, title: 120, name: 60, idea: 5000 }; // idea = the project's lyrics / notes (v9.1: multi-line, 5000)
 
   // Exactly six tunings. MIDI notes listed string 1 (highest) to string 6 (lowest), the same order as the tab rows.
   var TUNINGS = [

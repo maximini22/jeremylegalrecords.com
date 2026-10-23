@@ -1,7 +1,7 @@
 /* Quiet offline cache for the app at /app/ (scope ./). Bump VERSION when shell files change.
  * v9: the sampled Sounds (tones/*.mp3 + .json) are not part of the shell. They load on demand into their own cache,
  * TONES (kept across app updates; js/audio.js uses the same cache), and are served from it cache-first. */
-var VERSION = 'jlr-guitar-tab-v9';
+var VERSION = 'jlr-guitar-tab-v9-1';
 var TONES = 'gt-tones-v1';
 var SHELL = [
   './',

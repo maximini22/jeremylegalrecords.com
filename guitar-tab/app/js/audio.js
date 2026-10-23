@@ -156,6 +156,7 @@
     last.connect(g); g.connect(master);
     src.start(when);
     src.stop(stopAt);
+    if (opts.sched) voices.push({ src: src, g: g, when: when, stopAt: stopAt });
     return { tone: tone, sound: sound };
   }
   // Metronome click (v8.2): an MPC-style soft woody tick, synthesised (no samples): a band-passed noise burst plus a
@@ -194,13 +195,21 @@
   }
 
   // Scheduler: getSteps() returns [{seconds-free step}] lazily so BPM/edits apply on the next step.
-  var timer = null, playing = null;
+  // v9.1 hand-off (Restart, loop edits, ruler jumps while playing): opts.handoff restarts inside the same lookahead
+  // scheduler without a gap. The new first step is placed HANDOFF_LEAD after now (enough for this tick to schedule it);
+  // every scheduled note that hasn't started yet is cancelled (disconnected, never sounds), notes already sounding fade
+  // out from now (time constant HANDOFF_FADE, under -40 dB by the new downbeat), and clicks queued ahead are dropped.
+  // The new steps, their notes and the metronome clicks are all timed from that one AudioContext time, so the downbeat
+  // is sample-accurate and nothing from the old pass overlaps it.
+  var timer = null, playing = null, voices = [], HANDOFF_LEAD = 0.04, HANDOFF_FADE = 0.006, lastStart = null;
   function play(opts) {
-    stop();
+    var handoff = !!(opts.handoff && playing && ctx), at = handoff ? ctx.currentTime + HANDOFF_LEAD : 0;
+    var cut = stop({ fade: handoff });
     unlock(); var c = ensure(); if (!c) return false;
-    // opts: { count, startAt, stepAt(i) -> {ticks, notes:[{midi, muted, offset (ticks into the step), ticks (length), gain (0-1), track, tone}]}, bpm(), ppq, loop, onStep(i|null) }
+    // opts: { count, startAt, stepAt(i) -> {ticks, notes:[{midi, muted, offset (ticks into the step), ticks (length), gain (0-1), track, tone}]}, bpm(), ppq, loop, onStep(i|null), handoff }
     // The caller waits for whenReady(tones) first; a note whose Sound isn't loaded is skipped (never synthesised).
-    playing = { opts: opts, i: Math.max(0, Math.min((opts.count || 1) - 1, opts.startAt || 0)), next: c.currentTime + 0.08, queue: [], raf: 0 };
+    playing = { opts: opts, i: Math.max(0, Math.min((opts.count || 1) - 1, opts.startAt || 0)), next: handoff ? at : c.currentTime + 0.08, queue: [], raf: 0 };
+    lastStart = { at: playing.next, handoff: handoff, now: c.currentTime, voices: cut };
     log = []; clog = [];
     // count-in (v8.2): opts.countIn = { beats, beatTicks } -> one bar of clicks before the first step (accent on 1)
     if (opts.countIn && opts.countIn.beats > 0) {
@@ -228,6 +237,7 @@
   function tick() {
     if (!playing) return;
     var P = playing, o = P.opts;
+    if (voices.length > 64) voices = voices.filter(function (v) { return v.stopAt > ctx.currentTime; });
     while (P.next < ctx.currentTime + 0.15) {
       if (P.i >= o.count) {
         if (o.loop && o.count > 0) P.i = 0;
@@ -240,7 +250,7 @@
       var stack = st.notes.length > 6 ? 0.6 : st.notes.length > 2 ? 0.8 : 1;
       st.notes.forEach(function (n) {
         var gain = (n.gain == null ? 1 : n.gain) * stack;
-        var r = note(n.midi, P.next + (n.offset || 0) * spt, (n.ticks || st.ticks) * spt, { muted: n.muted, gain: gain, tone: n.tone });
+        var r = note(n.midi, P.next + (n.offset || 0) * spt, (n.ticks || st.ticks) * spt, { muted: n.muted, gain: gain, tone: n.tone, sched: true });
         if (log.length < 2000) log.push({ midi: n.midi, muted: !!n.muted, at: +(P.next + (n.offset || 0) * spt - t0).toFixed(4), step: P.i, track: n.track == null ? null : n.track, gain: +gain.toFixed(3),
           tone: r ? r.tone : null, sound: r ? r.sound : null });
       });
@@ -253,14 +263,36 @@
     }
   }
   var log = [], clog = [], t0 = 0; // what was scheduled, in seconds from the start of playback (for tests)
-  function stop() {
+  // Stop the scheduler. Notes it scheduled ahead that haven't started are cancelled (so nothing sounds after Stop);
+  // notes already sounding ring out naturally, or with o.fade (a hand-off) fade out fast. Returns what it did to each
+  // scheduled voice (for tests): { when, stopAt, act: 'cancel' | 'fade' | 'done' }, times in AudioContext seconds.
+  function stop(o) {
     if (timer) { clearInterval(timer); timer = null; }
     if (playing) { cancelAnimationFrame(playing.raf); playing = null; }
-    // silence clicks scheduled ahead (the count-in queues a whole bar)
-    if (ctx) pend.forEach(function (k) { if (k.when > ctx.currentTime) try { k.out.disconnect(); } catch (e) { /* gone */ } });
-    pend = [];
+    var acts = [];
+    if (ctx) {
+      var now = ctx.currentTime;
+      // silence clicks scheduled ahead (the count-in queues a whole bar)
+      pend.forEach(function (k) { if (k.when > now) try { k.out.disconnect(); } catch (e) { /* gone */ } });
+      voices.forEach(function (v) {
+        var a = 'done';
+        if (v.stopAt <= now) a = 'done';
+        else if (v.when > now) { a = 'cancel'; try { v.g.disconnect(); } catch (e) { /* gone */ } try { v.src.stop(0); } catch (e2) { /* older Safari: one stop() only */ } }
+        else if (o && o.fade) {
+          a = 'fade'; var gp = v.g.gain;
+          if (gp.cancelAndHoldAtTime) gp.cancelAndHoldAtTime(now); else { var cur = gp.value; gp.cancelScheduledValues(now); gp.setValueAtTime(cur, now); }
+          gp.setTargetAtTime(0, now, HANDOFF_FADE);
+        } else a = 'ring';
+        acts.push({ when: +v.when.toFixed(4), stopAt: +v.stopAt.toFixed(4), act: a });
+      });
+    }
+    pend = []; voices = [];
+    return acts;
   }
-  window.TabAudio = { unlock: unlock, preview: preview, play: play, stop: stop, isPlaying: function () { return !!playing; },
+  window.TabAudio = { unlock: unlock, preview: preview, play: play, stop: function () { stop(); }, isPlaying: function () { return !!playing; },
+    // v9.1: the last (re)start: AudioContext time of the first step, whether it was a hand-off, and what happened to
+    // the notes the previous pass had scheduled (tests)
+    lastStart: function () { return lastStart && JSON.parse(JSON.stringify(lastStart)); }, now: function () { return ctx ? ctx.currentTime : 0; }, t0: function () { return t0; },
     lastNote: function () { return last; }, scheduled: function () { return log.slice(); }, clicks: function () { return clog.slice(); },
     clickLevel: function () { return { level: clickLevel(), soft: CLICK_SOFT, notePeak: NOTE_PEAK, defaultTrackGain: 2 * clickLevel() }; }, state: function () { return ctx ? ctx.state : 'none'; },
     // v9 Sounds

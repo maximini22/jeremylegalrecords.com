@@ -10,6 +10,9 @@
   var STORE_KEY = 'jlr-guitar-tab:library';
   var OLD_KEY = 'jlr-guitar-tab:current'; // first scaffold (single tab), migrated on load
   var PH_KEY = 'jlr-guitar-tab:playheads';
+  // v9.1: full copies of lyrics longer than older versions keep (v9 and v7 cut the notes to 500 characters on load).
+  // Never read by them; read back here so a rollback and roll-forward doesn't lose the rest of the lyrics.
+  var LYR_KEY = 'jlr-guitar-tab:lyrics-full', OLD_IDEA = 500;
   var HINT_KEY = 'jlr-guitar-tab:hint-v4-seen';
   var INLAYS = { 3: 1, 5: 1, 7: 1, 9: 1, 12: 2, 17: 1, 19: 1, 21: 1 }; // no dot at 15, by request
   var TUNING_SHORT = { 'c-standard': 'C std', 'drop-c': 'Drop C', 'd-standard': 'D std', 'drop-d': 'Drop D', 'e-standard': 'E std', 'open-g': 'Open G', custom: 'Custom' };
@@ -23,7 +26,8 @@
    'tracks', 'ruler-wrap', 'ruler', 'editor-wrap', 'editor', 'idea', 'drawer', 'drawer-scrim', 'project-select', 'title', 'track-name',
    'tuning', 'timesig', 'loop-info', 'ascii', 'import-file', 'share-btn', 'picker', 'scrim', 'picker-sub', 'neck', 'picker-strings',
    'picker-grid', 'pick-mute', 'picker-tip', 'toast', 'modal', 'modal-scrim', 'modal-h', 'modal-body', 'modal-actions', 'hint', 'song-info',
-   'picker-roll', 'roll-bar', 'picker-undo', 'picker-redo', 'grid-trk', 'grid-style', 'chords-open'
+   'picker-roll', 'roll-bar', 'picker-undo', 'picker-redo', 'grid-trk', 'grid-style', 'chords-open',
+   'idea-open', 'idea-prev', 'lyrics', 'lyr-count', 'lyr-chips', 'lyr-ins', 'lyr-mirror', 'lyr-restart', 'lyr-target', 'lyr-play', 'lyr-stop', 'lyr-click', 'lyr-pos'
   ].forEach(function (id) { els[id.replace(/-(\w)/g, function (_, c) { return c.toUpperCase(); })] = $(id); });
 
   var lib = null;
@@ -48,6 +52,11 @@
     try {
       localStorage.setItem(LIB_KEY, JSON.stringify(lib));
       try { localStorage.setItem(STORE_KEY, JSON.stringify(M.toV4(lib))); } catch (e1) { /* the v7 copy is a courtesy */ }
+      try {
+        var big = {}, any = false;
+        lib.projects.forEach(function (q) { if (q.idea && q.idea.length > OLD_IDEA) { big[q.id] = q.idea; any = true; } });
+        if (any) localStorage.setItem(LYR_KEY, JSON.stringify(big)); else localStorage.removeItem(LYR_KEY);
+      } catch (e4) { /* a courtesy too */ }
       var d = new Date();
       els.saveState.textContent = 'Saved ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
       els.saveState.className = 'save-state ok';
@@ -65,7 +74,7 @@
       if (raw) {
         var obj = JSON.parse(raw), r = M.parseFile(obj);
         if (!r.error) {
-          var l = M.newLibrary(); l.projects = r.projects;
+          var l = M.newLibrary(); l.projects = r.projects; restoreLyrics(l.projects);
           l.activeProjectId = r.projects.some(function (p) { return p.id === obj.activeProjectId; }) ? obj.activeProjectId : r.projects[0].id;
           // An older library is upgraded in place; keep the original once as a backup.
           if (r.migratedFrom) { try { if (!localStorage.getItem(STORE_KEY + '-v' + r.migratedFrom + '-backup')) localStorage.setItem(STORE_KEY + '-v' + r.migratedFrom + '-backup', raw); } catch (e2) { /* full */ } }
@@ -79,6 +88,17 @@
       }
     } catch (e) { /* fall through to a fresh library */ }
     return { lib: M.newLibrary(), restored: false, warnings: [] };
+  }
+  // After a rollback to v9 or v7 and back: a project whose notes came back cut to exactly 500 characters, and still
+  // match the start of our full copy, gets the full lyrics back (notes edited in the older version are left alone).
+  function restoreLyrics(projects) {
+    var full = null;
+    try { full = JSON.parse(localStorage.getItem(LYR_KEY) || 'null'); } catch (e) { full = null; }
+    if (!full || typeof full !== 'object') return;
+    projects.forEach(function (q) {
+      var f = full[q.id];
+      if (typeof f === 'string' && q.idea && q.idea.length === OLD_IDEA && f.length > OLD_IDEA && f.slice(0, OLD_IDEA) === q.idea) q.idea = f.slice(0, M.LIMITS.idea);
+    });
   }
   function changed(opts) {
     M.recompute(project()); checkpoint(); save(); render();
@@ -227,6 +247,7 @@
     var ph = forced != null ? forced : shownPh();
     Array.prototype.forEach.call(els.editor.children, function (c, k) { if (k) c.classList.toggle('ph', k - 1 === ph); });
     Array.prototype.forEach.call(els.ruler.children, function (c, k) { if (k) { c.classList.toggle('ph', k - 1 === ph); c.setAttribute('aria-current', k - 1 === ph ? 'step' : 'false'); } });
+    if (CL[ph] && LYR.open) els.lyrPos.textContent = posLabel(CL[ph].start);
     if (CL[ph]) { var pl = posLabel(CL[ph].start); els.phInfo.textContent = pl; els.phInfo.classList.toggle('long', pl.length > 6); fitPos(); els.phInfo.title = 'Playhead at bar|beat|16th(+ticks) ' + pl; }
   }
   function countLabel(c) {
@@ -454,7 +475,8 @@
     setToggle(els.loopToggle, L.enabled);
     setToggle(els.clickToggle, !!p.metronome); els.clickToggle.title = p.metronome ? 'Metronome on (M)' : 'Metronome off (M)';
     els.loopToggle.title = L.enabled ? 'Loop on: bars ' + L.startMeasure + '–' + L.endMeasure : 'Loop off';
-    if (document.activeElement !== els.idea) els.idea.value = p.idea || '';
+    if (document.activeElement !== els.idea && els.idea.value !== (p.idea || '')) { els.idea.value = p.idea || ''; if (LYR.open) lyricsUi(); }
+    renderPreview(); lyricTransportUi();
     undoUi();
   }
   function renderDrawer() {
@@ -484,7 +506,8 @@
     var p = project(), lines = [];
     if (p.title) lines.push(p.title);
     lines.push(p.bpm + ' bpm · ' + p.timeSignature.join('/') + ' · grid ' + M.DUR_FRACTION[p.grid.value] + (p.loop.enabled ? ' · loop bars ' + p.loop.startMeasure + '-' + p.loop.endMeasure : ''));
-    if (p.idea) lines.push('Notes: ' + p.idea);
+    var lyr = (p.idea || '').replace(/\s+$/, ''), multi = lyr.indexOf('\n') >= 0;
+    if (lyr && !multi) lines.push('Notes: ' + lyr);
     p.tracks.forEach(function (tr) {
       // each track is written on its own steps (its own style)
       var cl = cellsOf(tr), labels = M.tuningLabels(tr.tuning), w = Math.max.apply(null, labels.map(function (n) { return n.length; })), bk = buckets(tr, cl), info = groups(p, cl, bk);
@@ -511,6 +534,8 @@
         lines.push(dur.replace(/\s+$/, ''));
       }
     });
+    // v9.1: multi-line lyrics go under the tab, line for line
+    if (multi) { lines.push(''); lines.push('Lyrics'); lines.push(lyr); }
     return lines.join('\n') + '\n';
   }
 
@@ -777,8 +802,9 @@
       if (from < lp.a || from > lp.b) from = lp.a;
       base = lp.a; count = lp.b - lp.a + 1; loop = true;
     } else { base = 0; count = n; loop = false; }
-    A.stop();
+    // v9.1: while playing, hand off inside the scheduler (no gap, nothing from the old pass rings over the new downbeat)
     var ok = A.play({
+      handoff: A.isPlaying(),
       count: count, startAt: from - base, loop: loop, ppq: M.PPQ,
       bpm: function () { return p.bpm; },
       stepAt: function (i) {
@@ -810,7 +836,9 @@
   function playPause() { if (A.isPlaying() || playWait) stopPlay(); else startPlayback(phCell(), { countIn: true }); }
   function startCell() { var lp = loopCells(project(), CL); return lp ? lp.a : 0; }
   // Back to start: jumps to the loop start (loop on) or bar 1; keeps playing if playing.
-  function backToStart() { if (A.isPlaying()) startPlayback(startCell()); else { setPlayhead(startCell()); toast('Back to start'); } }
+  // v9.1 Restart (lyrics sheet, R): while playing it is a scheduler hand-off to the loop's first downbeat (bar 1 with the
+  // loop off), so writing over a repeating loop can snap back to the top at once; stopped, it moves the playhead.
+  function backToStart() { if (A.isPlaying() || playWait) startPlayback(startCell()); else { setPlayhead(startCell()); toast('Back to start'); } }
   // Stop (and Pause) keep the playhead where it stopped; Stop while already stopped returns to the start.
   function stopPlay(opts) {
     var was = A.isPlaying();
@@ -828,12 +856,188 @@
     els.playBtn.setAttribute('aria-busy', wait ? 'true' : 'false');
     els.playBtn.setAttribute('aria-label', wait ? 'Loading sound… (press to cancel)' : on ? 'Pause' : 'Play');
     els.playBtn.title = wait ? 'Loading sound…' : on ? 'Pause (Space)' : 'Play (Space)';
+    lyricTransportUi();
   }
   function markPlaying() {
     var mine = playProject === project().id;
     Array.prototype.forEach.call(els.editor.children, function (c, k) { if (k) c.classList.toggle('playing', mine && k - 1 === playingStep); });
     markPlayhead();
   }
+
+  // ---------- lyrics sheet (v9.1) ----------
+  // The project's notes field (idea) holds the lyrics: plain text, up to 5000 characters, newlines kept. A line that
+  // is just [Something] is a section header: it becomes a jump chip and is drawn bold by a mirror layer behind the
+  // textarea (the textarea keeps its own text, caret and selection, so typing is native on every phone).
+  var LYR = { open: false, saveT: 0, dirty: false, heads: [], active: -1, chipKey: null, mirrorText: null, lastSel: null, vvMax: 0, vvW: 0, jumpST: null, scroll: {}, measure: null };
+  var HEAD_RE = /^[ \t]*\[([^\[\]\n]{1,60})\][ \t]*$/;
+  function headLabel(line) { var m = HEAD_RE.exec(line); return m ? m[1].trim() : ''; }
+  function lyricHeads(text) {
+    var out = [], pos = 0;
+    text.split('\n').forEach(function (ln, i) { var h = headLabel(ln); if (h) out.push({ label: h, line: i, start: pos, end: pos + ln.length }); pos += ln.length + 1; });
+    return out;
+  }
+  function renderPreview() {
+    var t = project().idea || '', box = els.ideaPrev, lines = t.split('\n').filter(function (l) { return l.trim(); }).slice(0, 2);
+    box.textContent = '';
+    if (!lines.length) { var e = document.createElement('span'); e.className = 'ie'; e.textContent = 'Lyrics & notes… tap to write'; box.appendChild(e); }
+    lines.forEach(function (l, i) {
+      if (i) box.appendChild(document.createTextNode('\n'));
+      if (headLabel(l)) { var b = document.createElement('span'); b.className = 'ih'; b.textContent = l.trim(); box.appendChild(b); } else box.appendChild(document.createTextNode(l.trim()));
+    });
+    els.ideaOpen.setAttribute('aria-label', (lines.length ? 'Lyrics: ' + lines.join(' / ') + '.' : 'Lyrics and notes.') + ' Open the lyrics sheet');
+  }
+  function renderMirror() {
+    var t = els.idea.value; if (t === LYR.mirrorText) return; LYR.mirrorText = t;
+    var m = els.lyrMirror, lines = t.split('\n'), acc = '';
+    m.textContent = '';
+    lines.forEach(function (ln, i) {
+      if (headLabel(ln)) { if (acc) m.appendChild(document.createTextNode(acc)); acc = ''; var sp = document.createElement('span'); sp.className = 'lh'; sp.textContent = ln; m.appendChild(sp); }
+      else acc += ln;
+      if (i < lines.length - 1) acc += '\n';
+    });
+    m.appendChild(document.createTextNode(acc + ' ')); // a trailing newline still gets its line, as in the textarea
+    m.scrollTop = els.idea.scrollTop;
+  }
+  function headTop(k) { var sp = els.lyrMirror.querySelectorAll('.lh')[k]; return sp ? sp.offsetTop : 0; }
+  function padTop() { return parseFloat(getComputedStyle(els.idea).paddingTop) || 0; }
+  function renderChips() {
+    var hs = lyricHeads(els.idea.value), key = hs.map(function (h) { return h.label + '@' + h.line; }).join('|');
+    LYR.heads = hs;
+    if (key === LYR.chipKey) return;
+    LYR.chipKey = key; LYR.active = -1; LYR.jumpST = null;
+    var row = els.lyrChips; row.textContent = '';
+    if (!hs.length) { var n = document.createElement('span'); n.className = 'lnone'; n.textContent = 'Sections show here: add [Verse], [Chorus]…'; row.appendChild(n); }
+    hs.forEach(function (h, k) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.dataset.k = k; b.textContent = h.label;
+      b.setAttribute('aria-label', 'Jump to ' + h.label); row.appendChild(b);
+    });
+  }
+  function setActive(k) {
+    if (k === LYR.active) return; LYR.active = k;
+    var row = els.lyrChips;
+    Array.prototype.forEach.call(row.querySelectorAll('.chip'), function (b, i) { b.classList.toggle('on', i === k); b.setAttribute('aria-current', i === k ? 'true' : 'false'); });
+    var c = row.querySelectorAll('.chip')[k];
+    if (c && (c.offsetLeft < row.scrollLeft || c.offsetLeft + c.offsetWidth > row.scrollLeft + row.clientWidth)) row.scrollLeft = Math.max(0, c.offsetLeft - 12);
+  }
+  // the section at the top of the text is the active chip
+  function markChip() {
+    var ta = els.idea, st = ta.scrollTop;
+    // after a chip jump the tapped section stays active until the text is scrolled (the last ones can't reach the top)
+    if (LYR.jumpST != null) { if (Math.abs(st - LYR.jumpST) <= 1) return; LYR.jumpST = null; }
+    var pt = padTop(), spans = els.lyrMirror.querySelectorAll('.lh'), a = spans.length ? 0 : -1;
+    for (var k = 0; k < spans.length; k++) if (spans[k].offsetTop - pt <= st + 4) a = k;
+    if (st > 0 && st + ta.clientHeight >= ta.scrollHeight - 2) for (var j = spans.length - 1; j > a; j--) if (spans[j].offsetTop - pt <= st + ta.clientHeight - 40) { a = j; break; }
+    setActive(a);
+  }
+  function lyricsUi() {
+    renderMirror(); renderChips();
+    var n = els.idea.value.length; els.lyrCount.textContent = n + ' / ' + M.LIMITS.idea; els.lyrCount.classList.toggle('near', n > M.LIMITS.idea * 0.9);
+    markChip();
+  }
+  function jumpTo(k) {
+    var h = LYR.heads[k], ta = els.idea; if (!h) return;
+    if (document.activeElement === ta) { var at = Math.min(ta.value.length, h.end + 1); ta.setSelectionRange(at, at); LYR.lastSel = at; }
+    ta.scrollTop = Math.max(0, headTop(k) - padTop()); els.lyrMirror.scrollTop = ta.scrollTop;
+    LYR.jumpST = null; setActive(k); LYR.jumpST = ta.scrollTop;
+  }
+  // Quick labels go on a line of their own, after a blank line, with the caret on the line below ready to write.
+  // A second Verse becomes Verse 2 (then 3 …); the others repeat as they are, as lyric sheets usually do.
+  function insertLabel(label) {
+    var ta = els.idea, v = ta.value, focused = document.activeElement === ta;
+    var s = focused ? ta.selectionStart : (LYR.lastSel != null ? Math.min(LYR.lastSel, v.length) : v.length), e = focused ? ta.selectionEnd : s;
+    if (label === 'Verse') { var n = lyricHeads(v).filter(function (h) { return /^verse\b/i.test(h.label); }).length; if (n) label = 'Verse ' + (n + 1); }
+    var before = v.slice(0, s), after = v.slice(e);
+    var pre = !before.trim() ? (before && !/\n$/.test(before) ? '\n' : '') : /\n\n$/.test(before) ? '' : /\n$/.test(before) ? '\n' : '\n\n';
+    var ins = pre + '[' + label + ']\n';
+    if (v.length - (e - s) + ins.length > M.LIMITS.idea) { toast('Lyrics are full (' + M.LIMITS.idea + ' characters)'); return; }
+    try { ta.focus({ preventScroll: true }); } catch (x) { ta.focus(); }
+    ta.setSelectionRange(s, e);
+    var ok = false; try { ok = document.execCommand('insertText', false, ins); } catch (x2) { ok = false; }
+    if (!ok || ta.value !== before + ins + after) { ta.value = v; ta.setRangeText(ins, s, e, 'end'); lyricsInput(); }
+    LYR.lastSel = s + ins.length; keepCaret();
+  }
+  function lyricsInput() {
+    var v = els.idea.value;
+    if (v.length > M.LIMITS.idea) { v = v.slice(0, M.LIMITS.idea); els.idea.value = v; }
+    project().idea = v; LYR.dirty = true;
+    clearTimeout(LYR.saveT); LYR.saveT = setTimeout(flushLyrics, 300);
+    lyricsUi(); renderPreview();
+  }
+  function flushLyrics() { clearTimeout(LYR.saveT); if (LYR.dirty) { LYR.dirty = false; save(); } }
+  // caret position in the text, measured on a hidden copy of the mirror (same box, same wrapping)
+  function caretY() {
+    var ta = els.idea, m = LYR.measure;
+    if (!m) { m = LYR.measure = document.createElement('div'); m.className = 'lmirror'; m.setAttribute('aria-hidden', 'true'); m.style.visibility = 'hidden'; m.style.height = 'auto'; els.idea.parentNode.appendChild(m); }
+    m.textContent = ta.value.slice(0, ta.selectionEnd);
+    var mk = document.createElement('span'); mk.textContent = '\u200b'; m.appendChild(mk);
+    return { top: mk.offsetTop, h: mk.offsetHeight || 24 };
+  }
+  function keepCaret() {
+    var ta = els.idea; if (!LYR.open || document.activeElement !== ta) return;
+    var c = caretY(), st = ta.scrollTop, ch = ta.clientHeight;
+    if (c.top < st + 4 || c.top + c.h > st + ch - 8) { ta.scrollTop = Math.max(0, c.top - Math.max(8, ch / 3)); els.lyrMirror.scrollTop = ta.scrollTop; }
+  }
+  // Pin the sheet to the visual viewport: with the on-screen keyboard up it fills only what is visible above it.
+  function fitLyrics() {
+    if (!LYR.open) return;
+    var vv = window.visualViewport, h = vv ? vv.height : window.innerHeight, top = vv ? vv.offsetTop : 0, w = window.innerWidth;
+    var st = els.lyrics.style; st.top = Math.round(top) + 'px'; st.height = Math.round(h) + 'px';
+    if (Math.abs(w - LYR.vvW) > 40) { LYR.vvW = w; LYR.vvMax = 0; }
+    if (h > LYR.vvMax) LYR.vvMax = h;
+    var kb = h < LYR.vvMax - 120;
+    els.lyrics.classList.toggle('kb', kb); els.lyrics.classList.toggle('tiny', kb && h < 360);
+    keepCaret();
+  }
+  function lyricTransportUi() {
+    if (!els.lyrPlay) return;
+    var on = A.isPlaying(), wait = !!playWait && !on, p = project(), lp = loopCells(p, CL);
+    els.lyrPlay.classList.toggle('on', on); els.lyrPlay.classList.toggle('loading', wait);
+    els.lyrPlay.setAttribute('aria-pressed', on ? 'true' : 'false'); els.lyrPlay.setAttribute('aria-label', wait ? 'Loading sound…' : on ? 'Pause' : 'Play');
+    els.lyrTarget.textContent = lp ? 'Loop · bar ' + p.loop.startMeasure : 'Bar 1';
+    els.lyrRestart.setAttribute('aria-label', 'Restart from ' + (lp ? 'the loop start, bar ' + p.loop.startMeasure : 'bar 1'));
+    setToggle(els.lyrClick, !!p.metronome); els.lyrClick.title = p.metronome ? 'Metronome on (M)' : 'Metronome off (M)';
+  }
+  function openLyrics() {
+    if (LYR.open) return;
+    if (pickerOpen) closePicker(); if (drawerOpen) closeDrawer();
+    LYR.open = true; els.lyrics.hidden = false; els.ideaOpen.setAttribute('aria-expanded', 'true'); document.body.classList.add('lyr-open');
+    els.idea.value = project().idea || ''; LYR.mirrorText = null; LYR.chipKey = null; LYR.lastSel = null;
+    fitLyrics(); lyricsUi(); lyricTransportUi(); markPlayhead();
+    els.idea.scrollTop = LYR.scroll[project().id] || 0; els.lyrMirror.scrollTop = els.idea.scrollTop; LYR.active = -2; markChip();
+    try { els.lyrics.focus({ preventScroll: true }); } catch (e) { /* old browsers */ }
+  }
+  function closeLyrics() {
+    if (!LYR.open) return;
+    flushLyrics(); LYR.scroll[project().id] = els.idea.scrollTop;
+    if (document.activeElement === els.idea) els.idea.blur();
+    LYR.open = false; els.lyrics.hidden = true; els.ideaOpen.setAttribute('aria-expanded', 'false'); document.body.classList.remove('lyr-open');
+    renderPreview();
+  }
+  function bindLyrics() {
+    els.ideaOpen.addEventListener('click', openLyrics);
+    on('lyr-done', 'click', closeLyrics);
+    els.idea.addEventListener('input', lyricsInput);
+    els.idea.addEventListener('scroll', function () { els.lyrMirror.scrollTop = els.idea.scrollTop; markChip(); }, { passive: true });
+    ['keyup', 'select', 'click', 'blur'].forEach(function (ev) { els.idea.addEventListener(ev, function () { LYR.lastSel = els.idea.selectionEnd; }); });
+    els.idea.addEventListener('blur', flushLyrics);
+    // chips, labels and the mini transport don't take focus, so the keyboard stays up while you use them
+    [els.lyrChips, els.lyrIns, els.lyrRestart.parentNode].forEach(function (row) {
+      ['pointerdown', 'mousedown'].forEach(function (ev) { row.addEventListener(ev, function (e) { if (e.target.closest('button')) e.preventDefault(); }); });
+    });
+    els.lyrChips.addEventListener('click', function (e) { var b = e.target.closest('.chip'); if (b) jumpTo(Number(b.dataset.k)); });
+    els.lyrIns.addEventListener('click', function (e) { var b = e.target.closest('.chip'); if (b) insertLabel(b.dataset.label); });
+    els.lyrRestart.addEventListener('click', function () {
+      backToStart(); var b = els.lyrRestart; b.classList.add('hit'); setTimeout(function () { b.classList.remove('hit'); }, 180);
+    });
+    els.lyrPlay.addEventListener('click', playPause);
+    els.lyrStop.addEventListener('click', function () { stopPlay({ user: true }); });
+    els.lyrClick.addEventListener('click', function () { els.clickToggle.click(); });
+    if (window.visualViewport) { window.visualViewport.addEventListener('resize', fitLyrics); window.visualViewport.addEventListener('scroll', fitLyrics); }
+    window.addEventListener('resize', fitLyrics);
+    window.addEventListener('pagehide', flushLyrics);
+    document.addEventListener('visibilitychange', function () { if (document.hidden) flushLyrics(); });
+  }
+
   function restartIfPlaying() { if (A.isPlaying() && playProject === project().id) startPlayback(playingStep); }
 
   // Ruler: bottom lane tap = move the playhead, drag = scrub (draggable playhead line).
@@ -1404,8 +1608,8 @@
     bindChords();
     els.scrim.addEventListener('click', closePicker);
 
-    // idea notes (pinned)
-    els.idea.addEventListener('input', function () { project().idea = els.idea.value.slice(0, M.LIMITS.idea); save(); });
+    // lyrics / notes (v9.1): the footer preview opens the lyrics sheet
+    bindLyrics();
 
     // drawer
     on('menu-btn', 'click', function () { if (drawerOpen) closeDrawer(); else openDrawer(); });
@@ -1495,6 +1699,17 @@
     var buf = '', bufT = null;
     document.addEventListener('keydown', function (e) {
       var t = e.target, typing = t && (t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && t.type !== 'range'));
+      if (LYR.open && e.key === 'Escape' && els.modal.hidden) { closeLyrics(); e.preventDefault(); return; }
+      if (LYR.open && !typing && els.modal.hidden && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        // the lyrics sheet: transport keys only (no grid edits behind it)
+        var lk = e.key;
+        if (lk === ' ') { playPause(); e.preventDefault(); }
+        else if (lk === 'Home' || lk === 'r' || lk === 'R') { els.lyrRestart.click(); e.preventDefault(); }
+        else if (lk === 'l' || lk === 'L') els.loopToggle.click();
+        else if (lk === 'm' || lk === 'M') els.clickToggle.click();
+        return;
+      }
+      if (LYR.open && !typing) return;
       if (CH.open && e.key === 'Escape' && els.modal.hidden) { if (CH.sel) { CH.sel = null; CH.mv = null; renderChords(); } else closeChords(); e.preventDefault(); return; }
       if (typing || !els.modal.hidden || e.altKey) return;
       var k = e.key;
@@ -1504,7 +1719,7 @@
       if (CH.open) return;
       if (k === 'Escape') { if (pickerOpen) closePicker(); else if (drawerOpen) closeDrawer(); e.preventDefault(); }
       else if (k === ' ' && !pickerOpen) { playPause(); e.preventDefault(); }
-      else if (k === 'Home' && !pickerOpen) { backToStart(); e.preventDefault(); }
+      else if ((k === 'Home' || k === 'r' || k === 'R') && !pickerOpen) { backToStart(); e.preventDefault(); }
       else if ((k === 'l' || k === 'L') && !pickerOpen) { els.loopToggle.click(); }
       else if ((k === 'm' || k === 'M') && !pickerOpen) { els.clickToggle.click(); }
       else if ((k === '[' || k === ']') && !pickerOpen) { stepGridValue(k === ']' ? 1 : -1); e.preventDefault(); }
@@ -1577,6 +1792,12 @@
       cur: c && { name: c.name, code: C.code(c), frets: c.frets.slice(), fingers: c.fingers.slice(), barre: c.barre, notes: C.notes(c) } }; }, scheduled: function () { return A.scheduled(); },
     toneState: function (id) { return A.toneState(id); }, toneRequests: function () { return A.toneRequests(); }, waiting: function () { return !!playWait; },
     bpmHold: function () { return { holding: !!hold, log: holdLog.slice(), curve: HOLD }; },
+    lyrics: function () {
+      var ta = els.idea;
+      return { open: LYR.open, value: ta.value, heads: LYR.heads.map(function (h) { return { label: h.label, line: h.line }; }), active: LYR.active,
+        scrollTop: ta.scrollTop, clientHeight: ta.clientHeight, scrollHeight: ta.scrollHeight, headTops: LYR.heads.map(function (h, k) { return headTop(k) - padTop(); }),
+        caret: LYR.open && document.activeElement === ta ? caretY() : null, focused: document.activeElement === ta, kb: els.lyrics.classList.contains('kb'), dirty: LYR.dirty };
+    },
     rhythm: function () { var p = project(); return groups(p, CL, buckets(track())).map(function (g) { return { len: g.len, beam: g.beam, beams: g.beamLevels, dot: g.dot, tp: g.tp, bracket: g.tpBracket, num: g.tpNum }; }); } };
   init();
 })();

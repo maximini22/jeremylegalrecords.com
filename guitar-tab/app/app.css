@@ -194,6 +194,63 @@ body.daw { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; backg
 /* ---- Pinned idea notes ---- */
 .idea-bar { padding: 6px 10px calc(6px + var(--safe-b)); border-top: 1px solid var(--line); background: var(--bg); margin-top: 6px; }
 .idea-bar .field { min-height: 44px; padding: 9px 12px; }
+/* v9.1: the box is a two-line preview of the lyrics; tapping it opens the lyrics sheet */
+.idea-prev { width: 100%; height: 44px; display: flex; align-items: center; gap: 10px; padding: 3px 10px 3px 12px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--bg2); color: var(--text); font: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.idea-prev:hover, .idea-prev:focus-visible { border-color: var(--teal); outline: none; }
+.idea-prev svg { width: 18px; height: 18px; flex: none; color: var(--teal); }
+.ip-text { flex: 1 1 auto; min-width: 0; font-size: .78rem; line-height: 17px; max-height: 34px; white-space: pre-line; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.ip-text .ih { color: var(--teal); font-weight: 800; }
+.ip-text .ie { color: var(--dim); }
+
+/* ---- Lyrics sheet (v9.1) ----
+ * Full height, pinned to the visual viewport by JS (top/height follow visualViewport), so the on-screen keyboard
+ * shrinks the writing area instead of covering it. Section headers are styled by a mirror layer behind the native
+ * textarea: same font, padding, width and wrapping, scroll-synced; it paints a band and a bold outline under each
+ * [Header] line while the textarea keeps its own glyphs, caret, selection and autocorrect. */
+.sheet.lsheet { top: 0; bottom: auto; height: 100vh; height: 100dvh; max-height: none; z-index: 64; display: flex; flex-direction: column; overflow: hidden;
+  border-radius: 0; border-top: 0; box-shadow: none; background: var(--bg); padding: calc(6px + env(safe-area-inset-top, 0px)) 12px calc(8px + var(--safe-b)); }
+.lsheet > * { flex: none; }
+.lsheet .sheet-head { align-items: center; gap: 10px; margin-bottom: 6px; }
+.lsheet .card-h { flex: 1 1 auto; margin: 0; }
+.lcount { font: 600 .72rem var(--mono); color: var(--dim); white-space: nowrap; }
+.lcount.near { color: var(--amber); }
+.lrow { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -12px 6px; padding: 0 12px; overscroll-behavior-x: contain; }
+.lrow::-webkit-scrollbar { display: none; }
+.lrow .chip { flex: none; min-height: 34px; padding: 4px 12px; font-size: .8rem; white-space: nowrap; touch-action: manipulation; }
+.lchips .chip { border-color: rgba(46,196,182,.55); color: var(--teal); font-weight: 800; }
+.lchips .chip.on { background: var(--teal); border-color: var(--teal); color: #04201d; }
+.lchips .lnone { font-size: .74rem; color: var(--dim); line-height: 34px; white-space: nowrap; }
+.lins .chip { border-style: dashed; color: var(--muted); }
+.ledit { flex: 1 1 auto; min-height: 0; position: relative; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-deep); overflow: hidden; }
+.ledit:focus-within { border-color: var(--teal); }
+.lmirror, .ltext { position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; border: 0; border-radius: 0; box-sizing: border-box; padding: 10px 14px 28px;
+  font-family: var(--font); font-size: 16px; font-weight: 400; line-height: 1.55; letter-spacing: normal; word-spacing: normal; text-transform: none; text-indent: 0; text-align: left;
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; tab-size: 4; }
+.ltext { display: block; background: transparent; color: var(--text); caret-color: var(--neon); resize: none; outline: none; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: none; -webkit-appearance: none; appearance: none; overscroll-behavior: contain; }
+.ltext::-webkit-scrollbar { display: none; }
+.ltext::placeholder { color: var(--dim); }
+.lmirror { color: transparent; overflow: hidden; pointer-events: none; }
+.lmirror .lh { display: inline-block; width: 100%; vertical-align: top; border-radius: 6px; background: rgba(46,196,182,.15); color: var(--teal);
+  -webkit-text-stroke: 2.4px var(--teal); box-shadow: -9px 0 0 rgba(46,196,182,.15), -13px 0 0 var(--teal); }
+.lmini { display: flex; align-items: center; gap: 8px; padding-top: 8px; }
+.lmini .tb { height: 54px; min-width: 54px; }
+.lrestart { flex: 1 1 auto; gap: 10px; justify-content: center; border-color: var(--teal); color: var(--teal); background: var(--teal-dim); touch-action: manipulation; }
+.lrestart svg { width: 24px; height: 24px; flex: none; }
+.lrestart span { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.1; }
+.lrestart b { font-size: 1rem; letter-spacing: .02em; }
+.lrestart small { font: 600 .68rem var(--mono); color: var(--muted); white-space: nowrap; }
+.lrestart.hit { box-shadow: 0 0 0 3px rgba(46,196,182,.45); }
+.lpos { min-width: 50px; text-align: right; font: 700 .76rem var(--mono); color: var(--muted); white-space: nowrap; }
+.lsheet.kb .sheet-head { margin-bottom: 4px; }
+.lsheet.kb .lrow { margin-bottom: 4px; }
+.lsheet.kb .lrow .chip { min-height: 30px; padding: 2px 10px; }
+.lsheet.kb .lmini { padding-top: 6px; }
+.lsheet.kb .lmini .tb { height: 44px; min-width: 46px; }
+.lsheet.tiny .lchips { display: none; }
+@media (max-width: 374px) { .lpos { display: none; } }
 
 /* ---- First-run hint ---- */
 .hint-pop { position: fixed; z-index: 50; left: 50%; transform: translateX(-50%); bottom: calc(64px + var(--safe-b)); width: calc(100% - 24px); max-width: calc(var(--col) - 24px);
@@ -443,3 +500,5 @@ body.daw { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; backg
 .transport .bpm .tb.sm { min-width: 30px; }
 .transport .bpm-val { width: 54px; }
 .transport .bpm { gap: 2px; }
+.lsheet:focus { outline: none; }
+body.lyr-open .toast { bottom: calc(84px + var(--safe-b)); }
