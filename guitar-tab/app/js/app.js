@@ -19,7 +19,7 @@
 
   var $ = function (id) { return document.getElementById(id); };
   var els = {};
-  ['save-state', 'menu-btn', 'play-start', 'play-btn', 'stop-btn', 'loop-toggle', 'bpm', 'bpm-down', 'bpm-up', 'grid-select', 'grid-dot', 'grid-trip', 'ph-info', 'undo-btn', 'redo-btn',
+  ['save-state', 'menu-btn', 'play-start', 'play-btn', 'stop-btn', 'loop-toggle', 'click-toggle', 'bpm', 'bpm-down', 'bpm-up', 'grid-select', 'grid-dot', 'grid-trip', 'ph-info', 'undo-btn', 'redo-btn',
    'tracks', 'ruler-wrap', 'ruler', 'editor-wrap', 'editor', 'idea', 'drawer', 'drawer-scrim', 'project-select', 'title', 'track-name',
    'tuning', 'timesig', 'loop-info', 'ascii', 'import-file', 'share-btn', 'picker', 'scrim', 'picker-sub', 'neck', 'picker-strings',
    'picker-grid', 'pick-mute', 'picker-tip', 'toast', 'modal', 'modal-scrim', 'modal-h', 'modal-body', 'modal-actions', 'hint', 'song-info',
@@ -377,6 +377,7 @@
     els.gridStyle.setAttribute('aria-label', 'Note style for ' + nm);
     els.gridDot.setAttribute('aria-label', 'Dotted, ' + nm); els.gridTrip.setAttribute('aria-label', 'Triplet, ' + nm);
     setToggle(els.loopToggle, L.enabled);
+    setToggle(els.clickToggle, !!p.metronome); els.clickToggle.title = p.metronome ? 'Metronome on (M)' : 'Metronome off (M)';
     els.loopToggle.title = L.enabled ? 'Loop on: bars ' + L.startMeasure + '–' + L.endMeasure : 'Loop off';
     if (document.activeElement !== els.idea) els.idea.value = p.idea || '';
     undoUi();
@@ -662,7 +663,15 @@
   // ---------- playback / transport ----------
   // Walks the song one grid step at a time and layers every audible track (mute/solo/volume read live,
   // so mixer moves apply within ~150 ms). Each note sounds at its own startTick for its durationTicks.
-  function startPlayback(from) {
+  // Metronome (v8.2): the beat ticks inside a step, from the project time signature (one click per beat, the same
+  // beat as the ruler: a quarter in 4/4, 3/4, 2/4, a dotted quarter in 6/8; accent on beat 1). Read live on every
+  // step, so toggling, BPM changes and loops stay in sync.
+  function clicksIn(p, start, len) {
+    var bt = M.beatTicks(p), bar = M.measureTicks(p), out = [];
+    for (var t = Math.ceil(start / bt) * bt; t < start + len; t += bt) out.push({ offset: t - start, tick: t, accent: t % bar === 0 });
+    return out;
+  }
+  function startPlayback(from, opts) {
     var p = project(), cl = CL, lp = loopCells(p, cl), n = cl.length;
     from = Math.max(0, Math.min(n - 1, from));
     var base, count, loop;
@@ -683,8 +692,9 @@
             notes.push({ midi: t.tuning.midi[e.string - 1] + (e.fret || 0), muted: e.fret === null, offset: e.startTick - c.start, ticks: e.durationTicks, gain: t.volume / 100, track: ti });
           });
         });
-        return { ticks: c.len, notes: notes };
+        return { ticks: c.len, notes: notes, clicks: p.metronome ? clicksIn(p, c.start, c.len) : null };
       },
+      countIn: opts && opts.countIn && p.metronome ? { beats: Math.round(M.measureTicks(p) / M.beatTicks(p)), beatTicks: M.beatTicks(p) } : null,
       onStep: function (i) {
         if (i === null) { // reached the end with the loop off: back to the top, ready to play again
           playingStep = null; playProject = null; playheads[p.id] = 0; savePlayheads();
@@ -699,7 +709,7 @@
     playingStep = from; playProject = p.id; playheads[p.id] = cl[from].start;
     transportUi(); markPlaying();
   }
-  function playPause() { if (A.isPlaying()) stopPlay(); else startPlayback(phCell()); }
+  function playPause() { if (A.isPlaying()) stopPlay(); else startPlayback(phCell(), { countIn: true }); }
   function startCell() { var lp = loopCells(project(), CL); return lp ? lp.a : 0; }
   // Back to start: jumps to the loop start (loop on) or bar 1; keeps playing if playing.
   function backToStart() { if (A.isPlaying()) startPlayback(startCell()); else { setPlayhead(startCell()); toast('Back to start'); } }
@@ -790,8 +800,8 @@
 
   // ---------- chord library ----------
   // Opened from the step editor. Shapes come from chords.json (precached by the service worker); names are worked out
-  // against the armed track's tuning (TabChords.label). Boxes and fret codes read like a chord chart (low E on the
-  // left); the detail's full neck stays the app's neck (high e on the left), and both are labelled. Power and barre
+  // against the armed track's tuning (TabChords.label). Boxes, fret codes and the detail's full neck all read like a
+  // chord chart: low E on the left (since v8.2). Finger numbers are not drawn (v8.2). Power and barre
   // chords are movable (TabChords.make): the detail has a root-string toggle and a ‹ fret › stepper, CH.mv.
   var C = window.TabChords, CH = { data: null, list: null, listKey: '', loading: null, open: false, fam: 'all', q: '', sel: null, mv: null, mode: 'strum' };
   var CFAMS = [['all', 'All'], ['open', 'Open'], ['power', 'Power'], ['barre', 'Barre'], ['other', 'Other']];
@@ -858,7 +868,7 @@
     });
     list.innerHTML = any ? html : '<p class="cempty">No chords match "' + esc(CH.q) + '".</p>';
     var st = chordStep();
-    $('chords-foot').textContent = 'Tap a chord to preview it at bar ' + st.bar + ' · step ' + st.step + '. Boxes and codes read like a chord chart, low E \u2192 high e. Power and barre chords slide up the neck with \u2039 fret \u203a.';
+    $('chords-foot').textContent = 'Tap a chord to preview it at bar ' + st.bar + ' · step ' + st.step + '. Power and barre chords slide up the neck with \u2039 fret \u203a.';
     $('chords-detail').hidden = !detail;
     if (detail) renderChordDetail(); else sh.classList.remove('nolist');
   }
@@ -871,7 +881,7 @@
   function renderChordDetail() {
     var c = selChord(), tr = track(), midi = tr.tuning.midi, lb = C.label(c, midi), labels = M.tuningLabels(tr.tuning), mv = c.movable;
     $('cd-name').textContent = lb.name;
-    $('cd-info').innerHTML = esc(lb.exact ? C.QUALITY_LONG[c.quality] : lb.shift === null ? C.QUALITY_LONG[c.quality] + ' shape' : c.name + ' shape') + ' · <em>' + esc(C.code(c)) + '</em> <small>low E \u2192 high e</small>';
+    $('cd-info').innerHTML = esc(lb.exact ? C.QUALITY_LONG[c.quality] : lb.shift === null ? C.QUALITY_LONG[c.quality] + ' shape' : c.name + ' shape') + ' · <em>' + esc(C.code(c)) + '</em>';
     var note = $('cd-note'); note.hidden = lb.exact; note.textContent = lb.exact ? '' : lb.note;
     // movable shapes: root string toggle, ‹ fret › stepper, 3 / 2 notes (power)
     $('cd-move').hidden = !mv;
@@ -894,17 +904,17 @@
     renderRoll(pv, $('cd-roll'), $('cd-bar'));
     $('cd-cap').textContent = CH.mode === 'arp' ? 'Arp · ' + plan.length + ' steps' + (beyond ? ' (' + beyond + ' into the next bar)' : '') : 'Strum · ' + plan.length + ' notes stacked';
     $('cd-roll').className += ' cdroll';
-    // full-neck header: the app's neck, high e on the left (labelled, since the boxes are the other way round)
-    var hs = '<span>fret</span>'; for (var si = 0; si < M.STRINGS; si++) hs += '<span>' + esc(labels[si]) + '</span>'; $('cd-str').innerHTML = hs;
-    // string chips, low E first (chart order, same as the code)
+    // full-neck header: low E on the left, like the chord boxes (labels follow the tuning: D A D G B e in drop D)
+    var hs = '<span>fret</span>'; for (var si = M.STRINGS - 1; si >= 0; si--) hs += '<span>' + esc(labels[si]) + '</span>'; $('cd-str').innerHTML = hs;
+    // string chips, low E first (same order as the neck, box and code)
     var chips = '';
     for (var i = 0; i < M.STRINGS; i++) {
       var v = c.frets[i], lab = labels[5 - i];
-      chips += '<span class="chip' + (v > 0 ? ' fr' : v === null ? ' mu' : '') + '"><b>' + esc(lab) + '</b><small>' + (v === null ? 'muted' : v === 0 ? 'open' : 'fret ' + v + ' · finger ' + c.fingers[i]) + '</small></span>';
+      chips += '<span class="chip' + (v > 0 ? ' fr' : v === null ? ' mu' : '') + '"><b>' + esc(lab) + '</b><small>' + (v === null ? 'muted' : v === 0 ? 'open' : 'fret ' + v) + '</small></span>';
     }
     $('cd-chips').innerHTML = chips;
     setToggle($('cd-strum'), CH.mode === 'strum'); setToggle($('cd-arp'), CH.mode === 'arp');
-    $('cd-neck').setAttribute('aria-label', lb.text + ' on the app neck (high e on the left). Frets low E to high e: ' + C.codeFull(c));
+    $('cd-neck').setAttribute('aria-label', lb.text + ' on the neck, low E on the left. Frets low E to high e: ' + C.codeFull(c));
     fitChords();
   }
   // Neck rows: frets 0..rows-1, or (shapes high up the neck) the open-string row, then a window round the shape.
@@ -917,21 +927,22 @@
     return out;
   }
   function chordNeck(c, rows) {
-    var hi = c.frets.slice().reverse(), fi = c.fingers.slice().reverse(), h = '', list = neckFrets(c, rows);
+    // columns low E -> high e (frets[] order), k0 = low E on the left; plain dots, no finger numbers
+    var h = '', list = neckFrets(c, rows);
     list.forEach(function (f, ri) {
       var mk = '', hit = false;
-      hi.forEach(function (v, i) {
+      c.frets.forEach(function (v, i) {
         var col = ' k' + i; // column class (no inline styles: the CSP is style-src 'self')
         if (f === 0 && v === 0) mk += '<i class="mk o' + col + '"></i>';
         else if (f === 0 && v === null) mk += '<i class="mk x' + col + '">×</i>';
-        else if (v === f && f > 0) { mk += '<i class="mk' + col + '">' + (fi[i] || '') + '</i>'; hit = true; }
+        else if (v === f && f > 0) { mk += '<i class="mk' + col + '"></i>'; hit = true; }
       });
-      if (c.barre && c.barre.fret === f) mk = '<i class="mk barre" data-a="' + (6 - c.barre.to) + '" data-b="' + (6 - c.barre.from) + '"></i>' + mk;
+      if (c.barre && c.barre.fret === f) mk = '<i class="mk barre" data-a="' + (c.barre.from - 1) + '" data-b="' + (c.barre.to - 1) + '"></i>' + mk;
       var dots = ''; for (var d = 0; d < (INLAYS[f] || 0); d++) dots += '<i></i>';
       h += '<div class="frow' + (f === 0 ? ' open' : '') + (ri === 1 && f > 1 ? ' gap' : '') + (INLAYS[f] ? ' inlay' : '') + (hit ? ' hit' : '') + '"><span class="n">' + f + '</span><span class="board"><span class="dots">' + dots + '</span>' + mk + '</span></div>';
     });
     $('cd-neck').innerHTML = h;
-    // the barre bar spans columns a..b (high e first); set through CSSOM, which the CSP allows
+    // the barre bar spans columns a..b (low E first); set through CSSOM, which the CSP allows
     Array.prototype.forEach.call($('cd-neck').querySelectorAll('.mk.barre'), function (el) {
       var a = +el.dataset.a, b = +el.dataset.b;
       el.style.left = ((a + 0.5) / 6 * 100).toFixed(3) + '%'; el.style.width = ((b - a) / 6 * 100).toFixed(3) + '%';
@@ -1234,6 +1245,7 @@
     on('play-btn', 'click', playPause);
     on('play-start', 'click', backToStart);
     on('stop-btn', 'click', function () { stopPlay({ user: true }); });
+    els.clickToggle.addEventListener('click', function () { var p = project(); p.metronome = !p.metronome; changed(); toast(p.metronome ? 'Metronome on' : 'Metronome off'); });
     els.loopToggle.addEventListener('click', function () { var L = project().loop; L.enabled = !L.enabled; changed(); restartIfPlaying(); toast(L.enabled ? 'Loop on: bars ' + L.startMeasure + '–' + L.endMeasure : 'Loop off'); });
     var setBpm = function (v) { var p = project(); p.bpm = clampBpm(v); els.bpm.value = p.bpm; checkpoint(); save(); };
     bindBpmHold(els.bpmDown, -1); bindBpmHold(els.bpmUp, 1);
@@ -1391,6 +1403,7 @@
       else if (k === ' ' && !pickerOpen) { playPause(); e.preventDefault(); }
       else if (k === 'Home' && !pickerOpen) { backToStart(); e.preventDefault(); }
       else if ((k === 'l' || k === 'L') && !pickerOpen) { els.loopToggle.click(); }
+      else if ((k === 'm' || k === 'M') && !pickerOpen) { els.clickToggle.click(); }
       else if ((k === '[' || k === ']') && !pickerOpen) { stepGridValue(k === ']' ? 1 : -1); e.preventDefault(); }
       else if (k === '.' && !pickerOpen) { toggleStyle('dotted'); e.preventDefault(); }
       else if ((k === 't' || k === 'T') && !pickerOpen) { toggleStyle('triplet'); e.preventDefault(); }

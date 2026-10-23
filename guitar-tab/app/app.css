@@ -403,6 +403,15 @@ body.daw { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; backg
 .cd-move output { display: flex; align-items: center; justify-content: center; min-width: 58px; height: 34px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
   font: 800 .85rem var(--mono); color: var(--sel); white-space: nowrap; }
 .cd-move #cd-ns { margin-left: auto; }
-.cneck-cap { margin: 0 0 2px; font: 600 .6rem/12px var(--font); color: var(--dim); text-align: center; letter-spacing: .02em; }
 .cneck .frow.gap { border-top: 3px dashed rgba(154,166,184,.5); }
 @media (max-width: 370px) { .cd-move { gap: 4px; } .cd-move .btn { padding: 0 6px; } .cd-move .step .btn { width: 30px; } .cd-move output { min-width: 50px; } }
+
+/* v8.2: metronome click toggle */
+.tb.click.on { border-color: var(--teal); color: var(--teal); background: rgba(46,196,182,.14); }
+/* six transport buttons + BPM fit 360px wide without scrolling */
+.transport { gap: 4px; padding: 8px 8px 6px; }
+.transport > .tb { min-width: 40px; padding: 0 6px; }
+.transport > .tb.play { min-width: 52px; }
+.transport .bpm .tb.sm { min-width: 30px; }
+.transport .bpm-val { width: 54px; }
+.transport .bpm { gap: 2px; }

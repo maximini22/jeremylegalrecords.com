@@ -117,6 +117,7 @@
       var a = p.tracks.filter(function (t) { return t.id === p.activeTrackId; })[0] || p.tracks[0];
       p.grid = makeGrid(p.grid && p.grid.value, trackStyle(a));
       p.tracks.forEach(function (t) { delete t.style; });
+      delete p.metronome;
     });
     return out;
   }
@@ -124,7 +125,7 @@
     var tr = newTrack('Guitar 1');
     var now = nowIso();
     var p = { id: uid(), title: title || '', bpm: 90, grid: defaultGrid(), timeSignature: [4, 4], lengthTicks: 0,
-      loop: { enabled: false, startMeasure: 1, endMeasure: 1 }, idea: '', createdAt: now, updatedAt: now, activeTrackId: tr.id, tracks: [tr] };
+      loop: { enabled: false, startMeasure: 1, endMeasure: 1 }, metronome: false, idea: '', createdAt: now, updatedAt: now, activeTrackId: tr.id, tracks: [tr] };
     p.lengthTicks = measureTicks(p) * 2;
     return recompute(p);
   }
@@ -354,6 +355,7 @@
     var out = { id: p.id, title: p.title.slice(0, LIMITS.title), bpm: clampInt(p.bpm || 90, 30, 300), grid: { value: g.grid.value },
       timeSignature: p.timeSignature.slice(), lengthTicks: p.lengthTicks,
       loop: { enabled: !!(p.loop && p.loop.enabled), startMeasure: (p.loop && p.loop.startMeasure) || 1, endMeasure: (p.loop && p.loop.endMeasure) || 1 },
+      metronome: p.metronome === true, // v8.2: metronome click on/off (optional; missing = off)
       idea: typeof p.idea === 'string' ? p.idea.slice(0, LIMITS.idea) : '',
       createdAt: typeof p.createdAt === 'string' ? p.createdAt : now, updatedAt: typeof p.updatedAt === 'string' ? p.updatedAt : now,
       activeTrackId: active, tracks: tracks };

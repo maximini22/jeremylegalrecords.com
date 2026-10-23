@@ -206,8 +206,7 @@
       if (!f) return;
       var inBarre = b && f === b.fret && i >= b.from - 1 && i <= b.to - 1;
       if (inBarre && i !== b.from - 1) return;
-      if (!inBarre) s += '<circle cx="' + X(i) + '" cy="' + Y(f) + '" r="' + r + '" fill="' + fill + '"/>';
-      s += '<text x="' + X(i) + '" y="' + (Y(f) + 3) + '" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="8.5" font-weight="800" fill="#04201d">' + (c.fingers[i] || '') + '</text>';
+      if (!inBarre) s += '<circle cx="' + X(i) + '" cy="' + Y(f) + '" r="' + r + '" fill="' + fill + '"/>'; // plain dots: no finger numbers (v8.2)
     });
     var lab = opts.labels || ['E', 'A', 'D', 'G', 'B', 'e'];
     lab.forEach(function (t, i) { s += '<text class="bs" x="' + X(i) + '" y="' + (H - 2) + '" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="7.5" font-weight="700" fill="#7d8899">' + String(t).replace(/[<&]/g, '') + '</text>'; });

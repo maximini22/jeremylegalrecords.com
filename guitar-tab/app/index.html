@@ -58,6 +58,8 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 6h12v12H6z"/></svg></button>
   <button type="button" class="tb loop" id="loop-toggle" aria-label="Loop" aria-pressed="false" title="Loop (L)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/></svg></button>
+  <button type="button" class="tb click" id="click-toggle" aria-label="Metronome" aria-pressed="false" title="Metronome (M)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.2 3h5.6l4.2 18H5z"/><path d="M7 15h10"/><path d="M12 15l5.5-9"/></svg></button>
   <div class="bpm">
     <button type="button" class="tb sm" id="bpm-down" aria-label="Slower">−</button>
     <label class="bpm-val"><input id="bpm" class="field" type="number" inputmode="numeric" min="30" max="300" step="1" aria-label="BPM"><small>BPM</small></label>
@@ -243,9 +245,9 @@
     <div class="roll-cap"><span id="cd-bar"></span><span id="cd-cap"></span></div>
     <div class="roll" id="cd-roll" aria-hidden="true"></div>
     <div class="picker-body cbody">
-      <div class="cneck"><p class="cneck-cap">Neck view · high e on the left</p><div class="cstr" id="cd-str" aria-hidden="true"></div><div class="neck" id="cd-neck" role="img"></div></div>
+      <div class="cneck"><div class="cstr" id="cd-str" aria-hidden="true"></div><div class="neck" id="cd-neck" role="img"></div></div>
       <div class="picker-side cside">
-        <span class="sec-lab">Strings <small>low E first</small></span>
+        <span class="sec-lab">Strings</span>
         <div class="cside-chips" id="cd-chips"></div>
         <div class="pk2" role="group" aria-label="How to drop it">
           <button type="button" class="btn sm on" id="cd-strum" aria-pressed="true">Strum ↓</button>
