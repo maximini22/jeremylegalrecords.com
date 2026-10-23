@@ -18,7 +18,8 @@
   ['save-state', 'menu-btn', 'play-start', 'play-btn', 'stop-btn', 'loop-toggle', 'bpm', 'grid-select', 'ph-info', 'undo-btn', 'redo-btn',
    'tracks', 'ruler-wrap', 'ruler', 'editor-wrap', 'editor', 'idea', 'drawer', 'drawer-scrim', 'project-select', 'title', 'track-name',
    'tuning', 'timesig', 'loop-info', 'ascii', 'import-file', 'share-btn', 'picker', 'scrim', 'picker-sub', 'neck', 'picker-strings',
-   'picker-grid', 'pick-mute', 'picker-tip', 'toast', 'modal', 'modal-scrim', 'modal-h', 'modal-body', 'modal-actions', 'hint', 'song-info'
+   'picker-grid', 'pick-mute', 'picker-tip', 'toast', 'modal', 'modal-scrim', 'modal-h', 'modal-body', 'modal-actions', 'hint', 'song-info',
+   'picker-roll', 'roll-bar', 'picker-undo', 'picker-redo'
   ].forEach(function (id) { els[id.replace(/-(\w)/g, function (_, c) { return c.toUpperCase(); })] = $(id); });
 
   var lib = null;
@@ -395,7 +396,46 @@
     var tip = ev ? 'Tap the lit ' + (ev.fret === null ? 'Muted button' : 'fret') + ' again to remove it.' : 'Tap a fret to place a note.';
     if (ev && ev.startTick !== c.start) tip += ' This note is off the grid (at ' + posLabel(ev.startTick) + '); editing keeps its timing.';
     els.pickerTip.textContent = tip;
-    els.pickerGrid.textContent = 'Grid ' + gridFrac(grid()) + ': Next moves one grid step.';
+    els.pickerGrid.textContent = 'Grid ' + gridFrac(grid()) + ' · Next = 1 step';
+    els.pickerUndo.disabled = els.undoBtn.disabled; els.pickerRedo.disabled = els.redoBtn.disabled;
+    renderRoll();
+    fitPicker();
+  }
+  // Mini tab roll inside the picker: the current bar on all six strings (high e on top, like the main roll).
+  // Armed track in full, other tracks faint in their colours, the current step lit and the selected string in yellow.
+  function renderRoll() {
+    var p = project(), tr = track(), ti = tindex(tr), labels = M.tuningLabels(tr.tuning), c = cell(), m = c.measure, ph = shownPh();
+    var idx = []; CL.forEach(function (x, i) { if (x.measure === m) idx.push(i); });
+    var bt = M.beatTicks(p), first = idx[0], last = idx[idx.length - 1];
+    var BK = p.tracks.map(function (t) {
+      var b = {}; t.notes.forEach(function (n) { var k = M.cellIndexAt(CL, n.startTick); if (k >= first && k <= last) (b[k] = b[k] || []).push(n); }); return b;
+    });
+    var roll = els.pickerRoll, frag = document.createDocumentFragment();
+    roll.className = 'roll tc' + ti; roll.style.setProperty('--rc', idx.length);
+    for (var si = 0; si < M.STRINGS; si++) {
+      var lab = document.createElement('div'); lab.className = 'rl' + (si === cur.str ? ' sel' : ''); lab.textContent = labels[si]; frag.appendChild(lab);
+      idx.forEach(function (ci) {
+        var d = document.createElement('div'), mine = (BK[ti][ci] || []).filter(function (n) { return n.string === si + 1; })[0], gh = null, gk = 0;
+        if (!mine) BK.forEach(function (b, k) { if (k !== ti && !gh) { var n = (b[ci] || []).filter(function (x) { return x.string === si + 1; })[0]; if (n) { gh = n; gk = k; } } });
+        d.className = 'rc' + (ci === cur.cell ? ' now' : '') + (si === cur.str ? ' sel' : '') + ((CL[ci].start - (m - 1) * M.measureTicks(p)) % bt === 0 && ci !== first ? ' bt' : '') +
+          (ci === ph ? ' ph' : '') + (mine ? ' has' : gh ? ' gh g' + gk : '');
+        d.dataset.col = ci; d.dataset.str = si;
+        if (mine) { var b = document.createElement('b'); b.textContent = cellText(mine); d.appendChild(b); } else if (gh) d.textContent = cellText(gh);
+        frag.appendChild(d);
+      });
+    }
+    roll.textContent = ''; roll.appendChild(frag);
+    els.rollBar.textContent = 'Bar ' + m + ' of ' + M.measureCount(p) + ' · step ' + (idx.indexOf(cur.cell) + 1) + '/' + idx.length;
+  }
+  // Size the fret rows (and, if needed, the string chips) so the whole picker fits the visible screen without scrolling.
+  function fitPicker() {
+    var sh = els.picker, body = sh.querySelector('.picker-body'), side = sh.querySelector('.picker-side');
+    var vh = Math.floor((window.visualViewport ? window.visualViewport.height : window.innerHeight) * 0.94);
+    sh.style.setProperty('--frow', '20px'); sh.style.setProperty('--chip', '42px');
+    var other = sh.scrollHeight - body.offsetHeight, avail = vh - other - 1;
+    var over = side.scrollHeight - avail;
+    if (over > 0) sh.style.setProperty('--chip', Math.max(30, 42 - Math.ceil(over / 6)) + 'px');
+    sh.style.setProperty('--frow', Math.max(20, Math.min(38, Math.floor((avail - 2) / (M.MAX_FRET + 1)))) + 'px');
   }
 
   var lastKey = null;
@@ -466,6 +506,22 @@
     if (!A.isPlaying()) { playheads[project().id] = cell().start; savePlayheads(); }
     render(); scrollToCur();
   }
+  // Bar jumps: back goes to the start of this bar (or the previous bar if already there); forward goes to the next bar,
+  // adding one at the end of the song like Next step does.
+  function prevBar() {
+    var m = cell().measure, start = firstOf(m);
+    if (cur.cell === start && m > 1) start = firstOf(m - 1);
+    moveStep(start - cur.cell);
+  }
+  function nextBar() {
+    var p = project(), m = cell().measure;
+    if (m === M.measureCount(p)) {
+      if (M.measureCount(p) >= M.LIMITS.measures) { toast('Song is at the bar limit'); return; }
+      p.lengthTicks += M.measureTicks(p); M.recompute(p); CL = cellsOf(); checkpoint(); save();
+    }
+    moveStep(firstOf(m + 1) - cur.cell);
+  }
+  function firstOf(m) { for (var i = 0; i < CL.length; i++) if (CL[i].measure === m) return i; return cur.cell; }
   function nextStep() {
     var p = project();
     if (cur.cell === CL.length - 1 && M.measureCount(p) < M.LIMITS.measures) { p.lengthTicks += M.measureTicks(p); M.recompute(p); CL = cellsOf(); checkpoint(); save(); }
@@ -661,6 +717,28 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
     toast('Exported ' + f.name);
   }
+  // MIDI (.mid): a small sheet with All tracks (one file, one lane per track) plus one row per track.
+  // All tracks includes every track whatever its mute/solo (mixer kept as CC7 + a name note); a single track
+  // exports on its own. Encoder: js/midi.js.
+  function exportMidiSheet() {
+    var p = project(), aud = M.audibleTracks(p);
+    var btns = [{ label: 'All tracks (' + p.tracks.length + ') · one file', value: 'all', cls: 'go' }];
+    p.tracks.forEach(function (t, i) {
+      var st = t.mute ? ' · muted' : aud.indexOf(t) < 0 ? ' · not soloed' : t.solo ? ' · solo' : '';
+      btns.push({ label: (i + 1) + '. ' + (t.name || 'Track') + ' · ' + (TUNING_SHORT[t.tuning.id] || t.tuning.name) + st, value: t.id, cls: 'trk-x c' + i });
+    });
+    btns.push({ label: 'Cancel', value: 'cancel' });
+    choose('Export MIDI', 'All tracks: one .mid with each track on its own lane and channel (muted or unsoloed tracks are still included, at their mixer volume). Or pick one track for its own file.', btns)
+      .then(function (v) { if (v !== 'cancel') exportMidi(v); });
+  }
+  function exportMidi(mode) {
+    var p = project(), t = mode === 'all' ? null : p.tracks.filter(function (x) { return x.id === mode; })[0];
+    var bytes = window.TabMidi.build(p, { mode: mode }), name = window.TabMidi.fileName(p, t);
+    var url = URL.createObjectURL(new Blob([bytes], { type: 'audio/midi' })), a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    toast('Exported ' + name);
+  }
   function canShareFiles() {
     try { return !!(navigator.canShare && navigator.canShare({ files: [new File(['{}'], 't.json', { type: 'application/json' })] })); } catch (e) { return false; }
   }
@@ -755,6 +833,15 @@
     els.pickMute.addEventListener('click', function () { setEvent(0, true); });
     on('pick-clear', 'click', function () { setEvent(undefined); });
     on('picker-next', 'click', nextStep);
+    on('picker-prev', 'click', function () { moveStep(-1); });
+    on('picker-next-bar', 'click', nextBar);
+    on('picker-prev-bar', 'click', prevBar);
+    on('picker-undo', 'click', function () { undo(); });
+    on('picker-redo', 'click', function () { redo(); });
+    els.pickerRoll.addEventListener('click', function (e) {
+      var d = e.target.closest('.rc'); if (!d) return;
+      cur.str = Number(d.dataset.str); moveStep(Number(d.dataset.col) - cur.cell);
+    });
     on('picker-done', 'click', closePicker);
     els.scrim.addEventListener('click', closePicker);
 
@@ -836,6 +923,7 @@
     });
     on('export-one', 'click', function () { exportJson('project'); });
     on('export-all', 'click', function () { exportJson('library'); });
+    on('export-midi', 'click', exportMidiSheet);
     els.shareBtn.addEventListener('click', share);
     on('import-btn', 'click', function () { els.importFile.value = ''; els.importFile.click(); });
     els.importFile.addEventListener('change', function () { importFile(els.importFile.files[0]); });
@@ -876,7 +964,7 @@
       var r = loadLibrary(); if (!r.restored) return;
       lib = r.lib; hist = {}; render();
     });
-    window.addEventListener('resize', function () { syncRulerWidths(); });
+    window.addEventListener('resize', function () { syncRulerWidths(); if (pickerOpen) fitPicker(); });
   }
 
   function init() {

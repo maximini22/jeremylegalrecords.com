@@ -156,6 +156,7 @@
     <span class="sec-lab">Files</span>
     <div class="grid2">
       <button type="button" class="btn sm go" id="export-one">Export project (.json)</button>
+      <button type="button" class="btn sm go" id="export-midi">Export MIDI (.mid)</button>
       <button type="button" class="btn sm" id="export-all">Export all (.json)</button>
       <button type="button" class="btn sm" id="import-btn">Import (.json)</button>
       <button type="button" class="btn sm" id="share-btn" hidden>Share project</button>
@@ -177,22 +178,35 @@
 <div class="sheet-scrim" id="scrim" hidden></div>
 <section class="sheet" id="picker" role="dialog" aria-modal="true" aria-labelledby="picker-h" hidden>
   <div class="sheet-head">
-    <div>
+    <div class="ph-text">
       <span class="card-h" id="picker-h">Pick a fret</span>
       <span class="picker-sub" id="picker-sub"></span>
     </div>
-    <button type="button" class="btn sm go" id="picker-done">Done</button>
+    <div class="ph-btns">
+      <button type="button" class="btn sm icon" id="picker-undo" aria-label="Undo" title="Undo">↶</button>
+      <button type="button" class="btn sm icon" id="picker-redo" aria-label="Redo" title="Redo">↷</button>
+      <button type="button" class="btn sm go" id="picker-done">Done</button>
+    </div>
   </div>
+  <!-- Mini tab roll: this bar on all six strings; armed track in full, other tracks faint. Tap a cell to jump there. -->
+  <div class="roll-cap"><span id="roll-bar"></span><span id="picker-grid"></span></div>
+  <div class="roll" id="picker-roll" aria-hidden="true"></div>
   <div class="picker-body">
     <div class="neck" id="neck" role="group" aria-label="Frets 0 to 16"></div>
     <div class="picker-side">
       <span class="sec-lab">String</span>
       <div class="pstrings" id="picker-strings" role="radiogroup" aria-label="String, high at the top, low at the bottom"></div>
-      <button type="button" class="btn sm" id="pick-mute">x Muted</button>
-      <button type="button" class="btn sm" id="pick-clear">Clear</button>
+      <div class="pk2">
+        <button type="button" class="btn sm" id="pick-mute">x Muted</button>
+        <button type="button" class="btn sm" id="pick-clear">Clear</button>
+      </div>
       <p class="picker-tip" id="picker-tip" aria-live="polite"></p>
-      <p class="picker-grid" id="picker-grid"></p>
-      <button type="button" class="btn sm" id="picker-next">Next step ›</button>
+      <div class="pnav" role="group" aria-label="Move through the song">
+        <button type="button" class="btn sm" id="picker-prev" aria-label="Back one step">‹ Back<br>step</button>
+        <button type="button" class="btn sm go" id="picker-next" aria-label="Next step">Next<br>step ›</button>
+        <button type="button" class="btn sm" id="picker-prev-bar" aria-label="Back one bar">« Bar</button>
+        <button type="button" class="btn sm" id="picker-next-bar" aria-label="Next bar">Bar »</button>
+      </div>
     </div>
   </div>
 </section>
@@ -209,6 +223,7 @@
 
 <script src="js/audio.js"></script>
 <script src="js/model.js"></script>
+<script src="js/midi.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

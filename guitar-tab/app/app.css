@@ -182,9 +182,9 @@ body.daw { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; backg
 
 /* fret picker: vertical neck */
 .picker-sub { display: block; font-size: .85rem; color: var(--muted); }
-.picker-body { display: grid; grid-template-columns: 1fr 132px; gap: 10px; align-items: start; }
+.picker-body { display: grid; grid-template-columns: 1fr 140px; gap: 10px; align-items: start; }
 .neck { display: flex; flex-direction: column; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
-.frow { display: grid; grid-template-columns: 38px 1fr; align-items: stretch; height: 38px; padding: 0; text-align: left; color: var(--text); background: none; }
+.frow { display: grid; grid-template-columns: 38px 1fr; align-items: stretch; height: var(--frow, 38px); padding: 0; text-align: left; color: var(--text); background: none; }
 .frow .n { display: flex; align-items: center; justify-content: center; font: 700 .95rem var(--mono); color: var(--muted); background: #121a29; border-bottom: 1px solid var(--line); }
 .frow .board { position: relative; display: flex; align-items: center; justify-content: center; background:
   repeating-linear-gradient(90deg, transparent 0 calc(16.66% - 1px), rgba(154,166,184,.35) calc(16.66% - 1px) 16.66%), #1b2231;
@@ -200,11 +200,43 @@ body.daw { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; backg
 .picker-side { display: flex; flex-direction: column; gap: 8px; }
 .picker-side .sec-lab { margin: 0; }
 .pstrings { display: grid; grid-template-columns: 1fr; gap: 5px; }
-.pstrings .chip { font-family: var(--mono); min-width: 0; min-height: 42px; padding: 2px 10px; justify-content: space-between; display: flex; }
+.pstrings .chip { font-family: var(--mono); min-width: 0; min-height: var(--chip, 42px); padding: 2px 10px; justify-content: space-between; display: flex; }
 .pstrings .chip b { font-size: 1.05rem; }
 .pstrings .chip small { font-size: .62rem; font-weight: 500; opacity: .75; font-family: var(--font); }
 .pstrings .chip.has:not(.on) { color: var(--text); }
-.picker-tip, .picker-grid { margin: 0; font-size: .74rem; line-height: 1.35; color: var(--muted); }
+.picker-tip { margin: 0; font-size: .72rem; line-height: 1.3; color: var(--muted); }
+/* v5 step editor: yellow = the string you're on (chip + roll row), Back/Next + bar jumps, mini tab roll */
+:root { --sel: #f5d547; }
+.pstrings .chip.on { background: var(--sel); border-color: var(--sel); color: #231d00; box-shadow: 0 0 0 2px rgba(245,213,71,.25); }
+.pstrings .chip.on small { opacity: .85; }
+#picker { padding-top: 10px; }
+#picker .sheet-head { margin-bottom: 6px; align-items: center; }
+.ph-text { min-width: 0; }
+.ph-btns { display: flex; gap: 6px; flex: none; }
+.ph-btns .btn.icon { min-width: 40px; padding: 0 8px; font-size: 1.1rem; }
+.pk2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pk2 .btn { padding: 0 4px; min-height: 40px; font-size: .8rem; }
+.pnav { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pnav .btn { min-width: 0; padding: 2px 4px; white-space: normal; line-height: 1.15; text-align: center; font-size: .8rem; }
+.pnav #picker-prev, .pnav #picker-next { min-height: 50px; }
+.pnav #picker-prev-bar, .pnav #picker-next-bar { min-height: 40px; }
+.roll-cap { display: flex; justify-content: space-between; gap: 8px; font-size: .7rem; color: var(--muted); margin: 0 0 3px; }
+.roll-cap #roll-bar { color: var(--text); font-weight: 650; }
+.roll { display: grid; grid-template-columns: 22px repeat(var(--rc, 16), minmax(0, 1fr)); grid-auto-rows: 13px; margin: 0 0 8px;
+  border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--bg-deep, #0b111c); font: 600 .62rem/13px var(--mono); user-select: none; }
+.roll .rl { color: var(--muted); text-align: center; background: #121a29; border-right: 1px solid var(--line); overflow: hidden; }
+.roll .rc { position: relative; text-align: center; color: var(--text); cursor: pointer; overflow: hidden; white-space: nowrap;
+  background: linear-gradient(transparent 6px, rgba(154,166,184,.28) 6px, rgba(154,166,184,.28) 7px, transparent 7px); }
+.roll .rc.bt { box-shadow: inset 1px 0 0 rgba(154,166,184,.22); }
+.roll .rc.has b { position: relative; z-index: 1; display: inline-block; min-width: 11px; padding: 0 1px; border-radius: 3px; background: #1b2638; color: var(--tc, var(--teal)); }
+.roll .rc.gh { color: var(--gc); opacity: .55; font-weight: 500; }
+.roll .rc.gh.g0 { --gc: var(--t0); } .roll .rc.gh.g1 { --gc: var(--t1); } .roll .rc.gh.g2 { --gc: var(--t2); }
+.roll.tc0 { --tc: var(--t0); } .roll.tc1 { --tc: var(--t1); } .roll.tc2 { --tc: var(--t2); }
+.roll .sel { background-color: rgba(245,213,71,.16); }
+.roll .rl.sel { color: #231d00; background: var(--sel); }
+.roll .rc.now { background-color: rgba(46,196,182,.22); }
+.roll .rc.now.sel { background-color: rgba(245,213,71,.42); box-shadow: inset 0 0 0 2px var(--sel); }
+.roll .rc.ph::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--neon); opacity: .5; }
 #pick-mute.on { border-color: var(--amber); color: var(--amber); }
 
 /* ---- Modal + toast ---- */
@@ -215,3 +247,6 @@ body.daw { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; backg
 #modal-scrim { z-index: 70; }
 .toast { position: fixed; left: 50%; bottom: calc(66px + var(--safe-b)); transform: translateX(-50%); z-index: 80; background: var(--bg2); border: 1px solid var(--teal);
   color: var(--text); border-radius: 12px; padding: 9px 14px; font-size: .88rem; box-shadow: 0 10px 30px rgba(0,0,0,.5); max-width: calc(min(100%, var(--col)) - 32px); }
+/* MIDI export sheet: one row per track, marked with its colour */
+.modal-actions .btn.trk-x { justify-content: flex-start; white-space: normal; text-align: left; border-left: 6px solid var(--tc); }
+.modal-actions .btn.trk-x.c0 { --tc: var(--t0); } .modal-actions .btn.trk-x.c1 { --tc: var(--t1); } .modal-actions .btn.trk-x.c2 { --tc: var(--t2); }
