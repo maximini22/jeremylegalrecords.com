@@ -1,8 +1,12 @@
-/* Guitar Tab app (v4): DAW-style UI for up to 3 tab tracks, library persistence, undo/redo, import/export.
+/* Guitar Tab app (v8): DAW-style UI for up to 3 tab tracks (each with its own note style), chord library, library persistence,
+ * undo/redo, import/export/share.
  * Uses TabModel (js/model.js) and TabAudio (js/audio.js). Browser-only: nothing is uploaded, nothing to install. */
 (function () {
   'use strict';
   var M = window.TabModel, A = window.TabAudio;
+  // v8 keeps its library (schemaVersion 5) under LIB_KEY and also writes a schemaVersion 4 copy to STORE_KEY,
+  // the key v4-v7 read, so rolling back to v7 keeps every saved tab (see docs/ROLLBACK.md).
+  var LIB_KEY = 'jlr-guitar-tab:library-v5';
   var STORE_KEY = 'jlr-guitar-tab:library';
   var OLD_KEY = 'jlr-guitar-tab:current'; // first scaffold (single tab), migrated on load
   var PH_KEY = 'jlr-guitar-tab:playheads';
@@ -19,7 +23,7 @@
    'tracks', 'ruler-wrap', 'ruler', 'editor-wrap', 'editor', 'idea', 'drawer', 'drawer-scrim', 'project-select', 'title', 'track-name',
    'tuning', 'timesig', 'loop-info', 'ascii', 'import-file', 'share-btn', 'picker', 'scrim', 'picker-sub', 'neck', 'picker-strings',
    'picker-grid', 'pick-mute', 'picker-tip', 'toast', 'modal', 'modal-scrim', 'modal-h', 'modal-body', 'modal-actions', 'hint', 'song-info',
-   'picker-roll', 'roll-bar', 'picker-undo', 'picker-redo'
+   'picker-roll', 'roll-bar', 'picker-undo', 'picker-redo', 'grid-trk', 'grid-style', 'chords-open'
   ].forEach(function (id) { els[id.replace(/-(\w)/g, function (_, c) { return c.toUpperCase(); })] = $(id); });
 
   var lib = null;
@@ -42,7 +46,8 @@
   function save() {
     var p = project(); p.updatedAt = M.nowIso();
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(lib));
+      localStorage.setItem(LIB_KEY, JSON.stringify(lib));
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(M.toV4(lib))); } catch (e1) { /* the v7 copy is a courtesy */ }
       var d = new Date();
       els.saveState.textContent = 'Saved ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
       els.saveState.className = 'save-state ok';
@@ -53,7 +58,10 @@
   }
   function loadLibrary() {
     try {
-      var raw = localStorage.getItem(STORE_KEY);
+      var raw = localStorage.getItem(LIB_KEY), v4raw = localStorage.getItem(STORE_KEY);
+      // If an older version (after a rollback) saved since, its v4 copy no longer matches ours: take its copy.
+      if (raw && v4raw) { try { if (JSON.stringify(M.toV4(JSON.parse(raw))) !== v4raw) raw = null; } catch (e3) { raw = null; } }
+      if (!raw) raw = v4raw;
       if (raw) {
         var obj = JSON.parse(raw), r = M.parseFile(obj);
         if (!r.error) {
@@ -94,28 +102,38 @@
     undoUi();
   }
   function restore(s) {
-    var p = project(), o = JSON.parse(s), mix = {};
+    var p = project(), o = JSON.parse(s), mix = {}, tick = CL[cur.cell] ? CL[cur.cell].start : 0;
     p.tracks.forEach(function (t) { mix[t.id] = { volume: t.volume, mute: t.mute, solo: t.solo }; });
     Object.keys(o).forEach(function (k) { if (k !== 'id') p[k] = o[k]; });
     p.tracks.forEach(function (t) { var m = mix[t.id] || { volume: M.DEFAULT_VOLUME, mute: false, solo: false }; t.volume = m.volume; t.mute = m.mute; t.solo = m.solo; });
     if (!p.tracks.some(function (t) { return t.id === p.activeTrackId; })) p.activeTrackId = p.tracks[0].id;
-    M.recompute(p); save(); render();
+    M.recompute(p); CL = cellsOf(); cur.cell = M.cellIndexAt(CL, tick); save(); render();
   }
   function undo() { checkpoint(); var h = H(); if (!h.undo.length) return; h.redo.push(h.base); h.base = h.undo.pop(); restore(h.base); toast('Undo'); }
   function redo() { checkpoint(); var h = H(); if (!h.redo.length) return; h.undo.push(h.base); h.base = h.redo.pop(); restore(h.base); toast('Redo'); }
   function undoUi() { var h = H(); els.undoBtn.disabled = !h.undo.length; els.redoBtn.disabled = !h.redo.length; }
 
   // ---------- grid ----------
-  // One grid (snap) per project: a value (1/1 .. 1/64) plus a style (plain, dotted or triplet). Every column is
-  // one grid step (steps restart at each barline); notes keep their absolute startTick, so changing the grid
-  // only changes how they are drawn.
-  function grid() { var p = project(); if (!p.grid) p.grid = M.defaultGrid(); return p.grid; }
-  function cellsOf() { return M.cells(project(), grid()); }
-  var CL = []; // cells of the project at the current grid, refreshed on every render
+  // The grid value (1/1 .. 1/64) is one per project; the style (plain, dotted or triplet) is per track (v8), so a
+  // triplet lead can sit over a straight rhythm part. The editor shows the armed track's steps: every column is one
+  // of its grid steps (steps restart at each barline). Notes keep their absolute startTick, so changing a grid or
+  // style only changes how they are drawn and stepped through.
+  function gridOf(t) { var p = project(); if (!p.grid) p.grid = M.defaultGrid(); return M.trackGrid(p, t || track()); }
+  function grid() { return gridOf(track()); }
+  function cellsOf(t) { return M.cells(project(), gridOf(t)); }
+  var CL = []; // cells of the armed track's grid, refreshed on every render
+  // Run fn (which may change the armed track, a style or the grid) and keep the edit cursor, and the playback
+  // position if playing, on the same tick.
+  function keepTick(fn) {
+    var p = project(), tick = CL[cur.cell] ? CL[cur.cell].start : 0, wasPlaying = A.isPlaying() && playProject === p.id, playTick = playheads[p.id] || 0;
+    fn();
+    CL = cellsOf(); cur.cell = M.cellIndexAt(CL, tick);
+    return function () { if (wasPlaying && project() === p) startPlayback(M.cellIndexAt(CL, playTick)); };
+  }
   function cell(i) { return CL[i == null ? cur.cell : i]; }
   function notesIn(tr, c) { return tr.notes.filter(function (n) { return n.startTick >= c.start && n.startTick < c.start + c.len; }); }
   function notesOn(tr, c, no) { return notesIn(tr, c).filter(function (n) { return n.string === no; }); }
-  function buckets(tr) { var b = CL.map(function () { return []; }); tr.notes.forEach(function (n) { b[M.cellIndexAt(CL, n.startTick)].push(n); }); return b; }
+  function buckets(tr, cl) { cl = cl || CL; var b = cl.map(function () { return []; }); tr.notes.forEach(function (n) { b[M.cellIndexAt(cl, n.startTick)].push(n); }); return b; }
   function gridFrac(g) { return M.gridLabel(g); }
   function lenLabel(ticks) {
     var d = M.nameTicks(ticks);
@@ -259,7 +277,7 @@
   function renderEditor() {
     var p = project(), tr = track(), ti = tindex(tr), labels = M.tuningLabels(tr.tuning), L = p.loop;
     CL = cellsOf(); clampCur();
-    var BK = p.tracks.map(buckets), mine = BK[ti];
+    var BK = p.tracks.map(function (t) { return buckets(t); }), mine = BK[ti];
     var info = groups(p, CL, mine), ph = shownPh();
     els.editor.className = 'editor tc' + ti;
     var frag = document.createDocumentFragment();
@@ -316,9 +334,12 @@
       var arm = document.createElement('button'); arm.type = 'button'; arm.className = 'trk-arm'; arm.dataset.act = 'arm';
       arm.setAttribute('aria-pressed', armed ? 'true' : 'false');
       arm.setAttribute('aria-label', (armed ? 'Editing ' : 'Edit ') + name + ', ' + (t.tuning.name || 'tuning'));
-      arm.innerHTML = '<i class="sw" aria-hidden="true"></i><span class="nm"></span><small></small>';
+      var st = M.trackStyle(t);
+      arm.innerHTML = '<i class="sw" aria-hidden="true"></i><span class="nm"></span>' + (st !== 'plain' ? '<em class="st"></em>' : '') + '<small></small>';
       arm.children[1].textContent = name;
-      arm.children[2].textContent = TUNING_SHORT[t.tuning.id] || 'Custom';
+      if (st !== 'plain') { arm.children[2].textContent = st === 'triplet' ? '3' : '·'; arm.children[2].className = 'st ' + st; arm.children[2].title = (st === 'triplet' ? 'Triplet' : 'Dotted') + ' feel'; }
+      arm.lastChild.textContent = TUNING_SHORT[t.tuning.id] || 'Custom';
+      if (st !== 'plain') arm.setAttribute('aria-label', arm.getAttribute('aria-label') + ', ' + st + ' feel');
       var mb = document.createElement('button'); mb.type = 'button'; mb.className = 'ms m' + (t.mute ? ' on' : ''); mb.dataset.act = 'mute'; mb.textContent = 'M';
       mb.setAttribute('aria-pressed', t.mute ? 'true' : 'false'); mb.setAttribute('aria-label', 'Mute ' + name);
       var sb = document.createElement('button'); sb.type = 'button'; sb.className = 'ms s' + (t.solo ? ' on' : ''); sb.dataset.act = 'solo'; sb.textContent = 'S';
@@ -346,10 +367,15 @@
   function renderTop() {
     var p = project(), L = p.loop;
     if (document.activeElement !== els.bpm) els.bpm.value = p.bpm;
-    var gd = grid(), st = M.gridStyle(gd);
+    var gd = grid(), st = M.gridStyle(gd), tr = track(), ti = tindex(tr), nm = tr.name || 'Track ' + (ti + 1);
     els.gridSelect.value = gd.value;
     setToggle(els.gridDot, st === 'dotted'); setToggle(els.gridTrip, st === 'triplet');
-    els.gridSelect.title = 'Grid ' + gridFrac(gd) + ' (' + M.gridName(gd) + ')';
+    els.gridSelect.title = 'Grid ' + gridFrac(gd) + ' (' + M.gridName(gd) + ') · value for every track';
+    // The style toggles set the armed track's feel: the coloured tab says which track that is.
+    els.gridTrk.textContent = String(ti + 1); els.gridTrk.className = 'gs-trk c' + ti;
+    els.gridTrk.title = 'Style for ' + nm;
+    els.gridStyle.setAttribute('aria-label', 'Note style for ' + nm);
+    els.gridDot.setAttribute('aria-label', 'Dotted, ' + nm); els.gridTrip.setAttribute('aria-label', 'Triplet, ' + nm);
     setToggle(els.loopToggle, L.enabled);
     els.loopToggle.title = L.enabled ? 'Loop on: bars ' + L.startMeasure + '–' + L.endMeasure : 'Loop off';
     if (document.activeElement !== els.idea) els.idea.value = p.idea || '';
@@ -381,13 +407,13 @@
   function toAscii(perLine) {
     var p = project(), lines = [];
     if (p.title) lines.push(p.title);
-    lines.push(p.bpm + ' bpm · ' + p.timeSignature.join('/') + ' · grid ' + gridFrac(grid()) + (p.loop.enabled ? ' · loop bars ' + p.loop.startMeasure + '-' + p.loop.endMeasure : ''));
+    lines.push(p.bpm + ' bpm · ' + p.timeSignature.join('/') + ' · grid ' + M.DUR_FRACTION[p.grid.value] + (p.loop.enabled ? ' · loop bars ' + p.loop.startMeasure + '-' + p.loop.endMeasure : ''));
     if (p.idea) lines.push('Notes: ' + p.idea);
-    var cl = cellsOf();
     p.tracks.forEach(function (tr) {
-      var labels = M.tuningLabels(tr.tuning), w = Math.max.apply(null, labels.map(function (n) { return n.length; })), bk = buckets(tr), info = groups(p, cl, bk);
+      // each track is written on its own steps (its own style)
+      var cl = cellsOf(tr), labels = M.tuningLabels(tr.tuning), w = Math.max.apply(null, labels.map(function (n) { return n.length; })), bk = buckets(tr, cl), info = groups(p, cl, bk);
       lines.push('');
-      lines.push('[' + (tr.name || 'Track') + '] ' + (tr.tuning.name || '') + (tr.mute ? ' · muted' : '') + (tr.solo ? ' · solo' : ''));
+      lines.push('[' + (tr.name || 'Track') + '] ' + (tr.tuning.name || '') + ' · ' + gridFrac(gridOf(tr)) + (tr.mute ? ' · muted' : '') + (tr.solo ? ' · solo' : ''));
       var perBar = cl.filter(function (c) { return c.measure === 1; }).length, bars = Math.max(1, Math.floor(perLine / perBar));
       var mc = M.measureCount(p);
       for (var m0 = 1; m0 <= mc; m0 += bars) {
@@ -440,7 +466,9 @@
   }
   // Mini tab roll inside the picker: the current bar on all six strings (high e on top, like the main roll).
   // Armed track in full, other tracks faint in their colours, the current step lit and the selected string in yellow.
-  function renderRoll() {
+  // pv (chord preview): { cellIndex: { stringIndex: text } } drawn in yellow over the bar, into the chord sheet's roll.
+  function renderRoll(pv, roll, barEl) {
+    roll = roll || els.pickerRoll; barEl = barEl || els.rollBar;
     var p = project(), tr = track(), ti = tindex(tr), labels = M.tuningLabels(tr.tuning), c = cell(), m = c.measure, ph = shownPh();
     var all = []; CL.forEach(function (x, i) { if (x.measure === m) all.push(i); });
     // Fine grids (1/32, 1/64, small triplets) have more steps per bar than fit legibly: show a window of up to
@@ -450,22 +478,24 @@
     var BK = p.tracks.map(function (t) {
       var b = {}; t.notes.forEach(function (n) { var k = M.cellIndexAt(CL, n.startTick); if (k >= first && k <= last) (b[k] = b[k] || []).push(n); }); return b;
     });
-    var roll = els.pickerRoll, frag = document.createDocumentFragment();
+    var frag = document.createDocumentFragment();
     roll.className = 'roll tc' + ti; roll.style.setProperty('--rc', idx.length);
     for (var si = 0; si < M.STRINGS; si++) {
       var lab = document.createElement('div'); lab.className = 'rl' + (si === cur.str ? ' sel' : ''); lab.textContent = labels[si]; frag.appendChild(lab);
       idx.forEach(function (ci) {
         var d = document.createElement('div'), mine = (BK[ti][ci] || []).filter(function (n) { return n.string === si + 1; })[0], gh = null, gk = 0;
+        var pt = pv && pv[ci] ? pv[ci][si] : undefined;
+        if (pt !== undefined) { d.className = 'rc pv' + (ci === cur.cell ? ' now' : ''); var pb = document.createElement('b'); pb.textContent = pt; d.appendChild(pb); frag.appendChild(d); return; }
         if (!mine) BK.forEach(function (b, k) { if (k !== ti && !gh) { var n = (b[ci] || []).filter(function (x) { return x.string === si + 1; })[0]; if (n) { gh = n; gk = k; } } });
         d.className = 'rc' + (ci === cur.cell ? ' now' : '') + (si === cur.str ? ' sel' : '') + ((CL[ci].start - (m - 1) * M.measureTicks(p)) % bt === 0 && ci !== first ? ' bt' : '') + (idx.length > 12 ? ' fine' : '') +
-          (ci === ph ? ' ph' : '') + (mine ? ' has' : gh ? ' gh g' + gk : '');
+          (ci === ph ? ' ph' : '') + (mine ? ' has' : gh ? ' gh g' + gk : '') + (pv && pv[ci] ? ' pv' : '');
         d.dataset.col = ci; d.dataset.str = si;
         if (mine) { var b = document.createElement('b'); b.textContent = cellText(mine); d.appendChild(b); } else if (gh) d.textContent = cellText(gh);
         frag.appendChild(d);
       });
     }
     roll.textContent = ''; roll.appendChild(frag);
-    els.rollBar.textContent = 'Bar ' + m + ' of ' + M.measureCount(p) + ' · step ' + (pos + 1) + '/' + all.length +
+    barEl.textContent = 'Bar ' + m + ' of ' + M.measureCount(p) + ' · step ' + (pos + 1) + '/' + all.length +
       (all.length > idx.length ? ' · showing ' + (page * ROLL_MAX + 1) + '–' + (page * ROLL_MAX + idx.length) : '');
   }
   var ROLL_MAX = 16;
@@ -480,10 +510,16 @@
   function fitPicker() {
     var sh = els.picker, body = sh.querySelector('.picker-body'), side = sh.querySelector('.picker-side');
     var vh = Math.floor((window.visualViewport ? window.visualViewport.height : window.innerHeight) * 0.94);
-    sh.style.setProperty('--frow', '20px'); sh.style.setProperty('--chip', '42px');
+    sh.style.setProperty('--frow', '20px'); sh.style.setProperty('--chip', '42px'); sh.classList.remove('tight');
     var other = sh.scrollHeight - body.offsetHeight, avail = vh - other - 1;
     var over = side.scrollHeight - avail;
     if (over > 0) sh.style.setProperty('--chip', Math.max(30, 42 - Math.ceil(over / 6)) + 'px');
+    // Short screens: tighten the side column (smaller gaps and buttons), then let the string chips go down to 26px.
+    if (side.scrollHeight > avail) {
+      sh.classList.add('tight'); sh.style.setProperty('--chip', '30px');
+      over = side.scrollHeight - avail;
+      if (over > 0) sh.style.setProperty('--chip', Math.max(26, 30 - Math.ceil(over / 6)) + 'px');
+    }
     // 23 rows: shrink them down to FROW_MIN. If they still don't fit (short screens), keep FROW_MIN rows and let only
     // the neck scroll inside the sheet, so tap targets stay usable; the sheet itself never scrolls.
     var rows = M.MAX_FRET + 1, fr = Math.floor((avail - 2) / rows), scroll = fr < FROW_MIN;
@@ -557,17 +593,18 @@
     }
     changed();
   }
-  // Grid value (dropdown) and style (Dotted / Triplet toggles) together make the project grid. The step under
+  // Grid value (dropdown, whole project) and the armed track's style (Dotted / Triplet toggles). The step under
   // the cursor (and the playhead, if playing) stays on the same tick.
   function setGrid(value, style) {
-    var p = project(), tick = cell().start, wasPlaying = A.isPlaying() && playProject === p.id, playTick = wasPlaying && CL[playingStep] ? CL[playingStep].start : 0;
-    if (value == null) value = grid().value;
-    if (style == null) style = M.gridStyle(grid());
-    var gd = p.grid = M.makeGrid(value, style);
-    CL = cellsOf(); cur.cell = M.cellIndexAt(CL, tick);
+    var p = project(), tr = track(), styleChange = style != null && style !== M.trackStyle(tr);
+    var after = keepTick(function () {
+      if (value != null) p.grid = { value: M.makeGrid(value).value };
+      if (style != null) tr.style = style;
+    });
     changed({ scroll: true });
-    if (wasPlaying) startPlayback(M.cellIndexAt(CL, playTick));
-    toast('Grid ' + gridFrac(gd) + ' · ' + M.gridName(gd));
+    after();
+    var gd = grid();
+    toast(styleChange ? (tr.name || 'Track') + ': ' + (style === 'plain' ? 'straight' : style) + ' · ' + gridFrac(gd) : 'Grid ' + gridFrac(gd) + ' · ' + M.gridName(gd));
   }
   // Tapping a style turns it on (and the other off); tapping the active one goes back to plain.
   function toggleStyle(style) { setGrid(null, M.gridStyle(grid()) === style ? 'plain' : style); }
@@ -751,10 +788,196 @@
     els.editorWrap.addEventListener('scroll', function () { rw.scrollLeft = els.editorWrap.scrollLeft; }, { passive: true });
   }
 
+  // ---------- chord library ----------
+  // Opened from the step editor. Shapes come from chords.json (precached by the service worker); names are worked out
+  // against the armed track's tuning (TabChords.label). Boxes and the preview neck put high e on the LEFT, like the neck.
+  var C = window.TabChords, CH = { list: null, loading: null, open: false, fam: 'all', q: '', sel: null, mode: 'strum' };
+  var CFAMS = [['all', 'All'], ['open', 'Open'], ['power', 'Power'], ['barre', 'Barre'], ['other', 'Other']];
+  var CFAM_HEAD = { open: 'Open chords', power: 'Power chords', barre: 'Barre chords', other: 'Other' };
+  function loadChords() {
+    if (CH.list) return Promise.resolve(CH.list);
+    if (!CH.loading) CH.loading = fetch('chords.json').then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) { CH.list = d.chords; return CH.list; }).catch(function (e) { CH.loading = null; throw e; });
+    return CH.loading;
+  }
+  function chordStep() { var c = cell(), m = c.measure, f = firstOf(m), n = 0; CL.forEach(function (x) { if (x.measure === m) n++; }); return { bar: m, step: cur.cell - f + 1, of: n }; }
+  function chordSub() { var tr = track(), st = chordStep(); return (tr.name || 'Track') + ' · ' + (TUNING_SHORT[tr.tuning.id] || 'Custom') + ' · Bar ' + st.bar + ' · step ' + st.step + '/' + st.of; }
+  function openChords() {
+    if (!pickerOpen) return;
+    loadChords().then(function () {
+      CH.open = true; CH.sel = null; CH.q = ''; $('chords-q').value = ''; els.toast.hidden = true;
+      $('chords').hidden = false; $('chords-scrim').hidden = false; els.chordsOpen.classList.add('on');
+      renderChords(); $('chords-list').scrollTop = 0; $('chords-q').focus({ preventScroll: true });
+    }).catch(function () { toast("Couldn't load the chord library. Check your connection and try again."); });
+  }
+  function closeChords() {
+    CH.open = false; CH.sel = null; $('chords').hidden = true; $('chords-scrim').hidden = true; els.chordsOpen.classList.remove('on');
+    if (pickerOpen) { renderPicker(); els.chordsOpen.focus({ preventScroll: true }); }
+  }
+  function chordById(id) { return (CH.list || []).filter(function (c) { return c.id === id; })[0] || null; }
+  function renderChords() {
+    var tr = track(), midi = tr.tuning.midi, sh = $('chords'), detail = !!CH.sel;
+    $('chords-sub').textContent = chordSub();
+    sh.classList.toggle('detail', detail);
+    var found = C.search(CH.list, CH.q, midi), counts = {};
+    found.forEach(function (c) { counts[c.family] = (counts[c.family] || 0) + 1; });
+    var fam = $('chords-fam'); fam.textContent = '';
+    CFAMS.forEach(function (f) {
+      var b = document.createElement('button'), n = f[0] === 'all' ? found.length : counts[f[0]] || 0;
+      b.type = 'button'; b.className = 'chip' + (CH.fam === f[0] ? ' on' : ''); b.dataset.fam = f[0]; b.setAttribute('aria-pressed', CH.fam === f[0] ? 'true' : 'false');
+      b.textContent = f[1] + ' '; var sm = document.createElement('small'); sm.textContent = n; b.appendChild(sm); fam.appendChild(b);
+    });
+    var list = $('chords-list'), html = '', any = false;
+    ['open', 'power', 'barre', 'other'].forEach(function (k) {
+      if (CH.fam !== 'all' && CH.fam !== k) return;
+      var l = found.filter(function (c) { return c.family === k; }); if (!l.length) return; any = true;
+      html += '<h3 class="cgh"><span class="sec-lab">' + CFAM_HEAD[k] + '</span><small>' + l.length + '</small></h3><div class="cgrid">';
+      l.forEach(function (c) {
+        var lb = C.label(c, midi), sel = CH.sel === c.id;
+        html += '<button type="button" class="ccard' + (sel ? ' sel' : '') + '" data-id="' + esc(c.id) + '" aria-label="' + esc(lb.text + ', ' + C.QUALITY_LONG[c.quality] + ', ' + C.code(c, true).split('').join(' ') + ' high e first') + '"' + (sel ? ' aria-current="true"' : '') + '>' +
+          '<span><span class="cn' + (lb.name.length > 5 ? ' long' : '') + '">' + esc(lb.name) + '</span><span class="cq">' + esc(lb.exact ? C.qualityLine(c) : lb.shift === null ? 'shape · ' + c.quality : c.name + ' shape · ' + c.quality) + '</span>' +
+          '<span class="cf" title="Frets, high e first (as drawn)"><i>e </i>' + C.code(c, true) + '</span></span>' + C.box(c, { sel: sel }) + (sel ? '<span class="tag">Preview</span>' : '') + '</button>';
+      });
+      html += '</div>';
+    });
+    list.innerHTML = any ? html : '<p class="cempty">No chords match "' + esc(CH.q) + '".</p>';
+    var st = chordStep();
+    $('chords-foot').textContent = 'Tap a chord to preview it at bar ' + st.bar + ' · step ' + st.step + '. Boxes are drawn like the app\u2019s neck: high e on the left.';
+    $('chords-detail').hidden = !detail;
+    if (detail) renderChordDetail(); else sh.classList.remove('nolist');
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
+  // Where each note of the chord lands: strum = all at the cursor step; arp = one step apart, low string first.
+  function chordPlan(c) {
+    var ns = C.notes(c);
+    return ns.map(function (n, k) { return { string: n.string, fret: n.fret, cell: CH.mode === 'arp' ? cur.cell + k : cur.cell }; });
+  }
+  function renderChordDetail() {
+    var c = chordById(CH.sel), tr = track(), midi = tr.tuning.midi, lb = C.label(c, midi), labels = M.tuningLabels(tr.tuning);
+    $('cd-name').textContent = lb.name;
+    $('cd-info').innerHTML = esc(lb.exact ? C.QUALITY_LONG[c.quality] : lb.shift === null ? C.QUALITY_LONG[c.quality] + ' shape' : c.name + ' shape') + ' · e→E <em>' + C.code(c, true) + '</em> · E→e <em>' + C.code(c) + '</em>';
+    var note = $('cd-note'); note.hidden = lb.exact; note.textContent = lb.exact ? '' : lb.note;
+    // preview roll: the planned notes in yellow over this bar (anything past this page/bar isn't shown)
+    var pv = {}, plan = chordPlan(c), lastCell = CL.length - 1, beyond = 0;
+    plan.forEach(function (n) { if (n.cell > lastCell || CL[n.cell].measure !== cell().measure) { beyond++; return; } (pv[n.cell] = pv[n.cell] || {})[n.string - 1] = String(n.fret); });
+    c.frets.forEach(function (f, i) { if (f === null && CH.mode === 'strum') (pv[cur.cell] = pv[cur.cell] || {}); });
+    renderRoll(pv, $('cd-roll'), $('cd-bar'));
+    $('cd-cap').textContent = CH.mode === 'arp' ? 'Arp · ' + plan.length + ' steps' + (beyond ? ' (' + beyond + ' into the next bar)' : '') : 'Strum · ' + plan.length + ' notes stacked';
+    $('cd-roll').className += ' cdroll';
+    // neck header: string names, high e first
+    var hs = '<span>fret</span>'; for (var si = 0; si < M.STRINGS; si++) hs += '<span>' + esc(labels[si]) + '</span>'; $('cd-str').innerHTML = hs;
+    // shape chips, high e first
+    var chips = '';
+    for (si = 0; si < M.STRINGS; si++) {
+      var i = 5 - si, v = c.frets[i];
+      chips += '<span class="chip' + (v > 0 ? ' fr' : v === null ? ' mu' : '') + '"><b>' + esc(labels[si]) + '</b><small>' + (v === null ? 'muted' : v === 0 ? 'open' : 'fret ' + v + ' · finger ' + c.fingers[i]) + '</small></span>';
+    }
+    $('cd-chips').innerHTML = chips;
+    setToggle($('cd-strum'), CH.mode === 'strum'); setToggle($('cd-arp'), CH.mode === 'arp');
+    $('cd-neck').setAttribute('aria-label', lb.text + ' on the neck: ' + C.code(c, true).split('').join(' ') + ', high e first');
+    fitChords();
+  }
+  function chordNeck(c, rows) {
+    var hi = c.frets.slice().reverse(), fi = c.fingers.slice().reverse(), h = '';
+    for (var f = 0; f < rows; f++) {
+      var mk = '', hit = false;
+      hi.forEach(function (v, i) {
+        var col = ' k' + i; // column class (no inline styles: the CSP is style-src 'self')
+        if (f === 0 && v === 0) mk += '<i class="mk o' + col + '"></i>';
+        else if (f === 0 && v === null) mk += '<i class="mk x' + col + '">×</i>';
+        else if (v === f && f > 0) { mk += '<i class="mk' + col + '">' + (fi[i] || '') + '</i>'; hit = true; }
+      });
+      if (c.barre && c.barre.fret === f) mk = '<i class="mk barre" data-a="' + (6 - c.barre.to) + '" data-b="' + (6 - c.barre.from) + '"></i>' + mk;
+      var dots = ''; for (var d = 0; d < (INLAYS[f] || 0); d++) dots += '<i></i>';
+      h += '<div class="frow' + (f === 0 ? ' open' : '') + (INLAYS[f] ? ' inlay' : '') + (hit ? ' hit' : '') + '"><span class="n">' + f + '</span><span class="board"><span class="dots">' + dots + '</span>' + mk + '</span></div>';
+    }
+    $('cd-neck').innerHTML = h;
+    // the barre bar spans columns a..b (high e first); set through CSSOM, which the CSP allows
+    Array.prototype.forEach.call($('cd-neck').querySelectorAll('.mk.barre'), function (el) {
+      var a = +el.dataset.a, b = +el.dataset.b;
+      el.style.left = ((a + 0.5) / 6 * 100).toFixed(3) + '%'; el.style.width = ((b - a) / 6 * 100).toFixed(3) + '%';
+    });
+  }
+  // Fit the detail view to the sheet without scrolling: keep the chord list band if there's room (else drop it), then
+  // show as many neck rows as fit (at least frets 0..max(5, highest fret + 1)), shrinking rows from 22px to 16px.
+  function fitChords() {
+    var sh = $('chords'), body = sh.querySelector('.cbody'), side = sh.querySelector('.cside'), c = chordById(CH.sel);
+    if (!c) return;
+    var maxF = Math.max.apply(null, c.frets.map(function (f) { return f || 0; })), minRows = Math.max(5, maxF + 1) + 1;
+    function tryFit(withList) {
+      sh.classList.toggle('nolist', !withList);
+      body.style.setProperty('--cchip', '30px');
+      chordNeck(c, minRows); body.style.setProperty('--frow', '16px');
+      var free = sh.clientHeight - sh.scrollHeight + body.offsetHeight; // height the body may take
+      if (side.offsetHeight > free) {
+        body.style.setProperty('--cchip', Math.max(24, 30 - Math.ceil((side.offsetHeight - free) / 6)) + 'px');
+        if (side.offsetHeight > free) return false;
+      }
+      var neckRoom = Math.max(free, side.offsetHeight) - 18, fr = Math.min(22, Math.floor(neckRoom / minRows));
+      if (fr < 16) return false;
+      var rows = Math.min(M.MAX_FRET + 1, Math.max(minRows, Math.floor(neckRoom / fr)));
+      if (fr === 22) rows = Math.min(rows, Math.max(minRows, 13));
+      chordNeck(c, rows); body.style.setProperty('--frow', fr + 'px');
+      return sh.scrollHeight <= sh.clientHeight + 1;
+    }
+    if (!tryFit(true)) tryFit(false);
+    var cardEl = $('chords-list').querySelector('.ccard.sel');
+    if (cardEl && !sh.classList.contains('nolist')) $('chords-list').scrollTop = Math.max(0, cardEl.offsetTop - 40);
+  }
+  function previewChord(c) {
+    var tr = track(), ps = C.pitches(c, tr.tuning.midi), gap = CH.mode === 'arp' ? 170 : 28;
+    ps.forEach(function (m, k) { if (!k) A.preview(m); else setTimeout(function () { A.preview(m); }, k * gap); });
+  }
+  function selectChord(id) {
+    var c = chordById(id); if (!c) return;
+    CH.sel = id; renderChords(); previewChord(c);
+  }
+  // Drop: up to six notes on the armed track at the cursor step (Arp: one step apart, low string first, adding bars
+  // at the end of the song if needed). Muted (x) strings are skipped; notes already on the chord's strings in the
+  // target step are replaced. One undo step.
+  function dropChord() {
+    var c = chordById(CH.sel); if (!c) return;
+    var p = project(), tr = track(), plan = chordPlan(c), lb = C.label(c, tr.tuning.midi), st = chordStep();
+    var need = plan.length ? plan[plan.length - 1].cell : cur.cell;
+    while (need > CL.length - 1 && M.measureCount(p) < M.LIMITS.measures) { p.lengthTicks += M.measureTicks(p); M.recompute(p); CL = cellsOf(); }
+    var placed = 0, full = false;
+    plan.forEach(function (n) {
+      var cc = CL[Math.min(n.cell, CL.length - 1)];
+      tr.notes = tr.notes.filter(function (x) { return !(x.string === n.string && x.startTick >= cc.start && x.startTick < cc.start + cc.len); });
+      if (tr.notes.length >= M.LIMITS.notes) { full = true; return; }
+      tr.notes.push({ string: n.string, fret: n.fret, startTick: cc.start, durationTicks: 0, techniques: [] });
+      placed++;
+    });
+    var mode = CH.mode;
+    closeChords();
+    changed({ scroll: true });
+    toast(lb.name + (mode === 'arp' ? ' arpeggio' : '') + ' added at bar ' + st.bar + ', step ' + st.step + (full ? ' (track full: ' + placed + ' notes)' : ''), { label: 'Undo', fn: undo });
+  }
+  function bindChords() {
+    els.chordsOpen.addEventListener('click', openChords);
+    on('chords-close', 'click', closeChords);
+    on('chords-scrim', 'click', closeChords);
+    on('chords-q', 'input', function () { CH.q = $('chords-q').value; renderChords(); $('chords-list').scrollTop = 0; });
+    on('chords-fam', 'click', function (e) { var b = e.target.closest('.chip'); if (!b) return; CH.fam = b.dataset.fam; renderChords(); $('chords-list').scrollTop = 0; });
+    on('chords-list', 'click', function (e) { var b = e.target.closest('.ccard'); if (b) selectChord(b.dataset.id); });
+    on('cd-strum', 'click', function () { CH.mode = 'strum'; renderChordDetail(); previewChord(chordById(CH.sel)); });
+    on('cd-arp', 'click', function () { CH.mode = 'arp'; renderChordDetail(); previewChord(chordById(CH.sel)); });
+    on('cd-drop', 'click', dropChord);
+    on('cd-cancel', 'click', function () { CH.sel = null; renderChords(); });
+  }
+
   // ---------- modal + toast ----------
-  function toast(msg) {
-    els.toast.textContent = msg; els.toast.hidden = false;
-    clearTimeout(toast.t); toast.t = setTimeout(function () { els.toast.hidden = true; }, 2600);
+  // action: { label, fn } adds a button (e.g. Undo) and keeps the toast up longer.
+  function toast(msg, action) {
+    var t = els.toast; t.textContent = ''; t.className = 'toast' + (action ? ' act' : '');
+    if (action) {
+      var sp = document.createElement('span'); sp.textContent = msg; t.appendChild(sp);
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = action.label; b.id = 'toast-act';
+      b.addEventListener('click', function () { t.hidden = true; action.fn(); });
+      t.appendChild(b);
+    } else t.textContent = msg;
+    t.hidden = false;
+    clearTimeout(toast.t); toast.t = setTimeout(function () { t.hidden = true; }, action ? 6000 : 2600);
   }
   function choose(title, body, buttons) {
     return new Promise(function (resolve) {
@@ -813,13 +1036,62 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
     toast('Exported ' + name);
   }
-  function canShareFiles() {
-    try { return !!(navigator.canShare && navigator.canShare({ files: [new File(['{}'], 't.json', { type: 'application/json' })] })); } catch (e) { return false; }
-  }
-  function share() {
+  // Share, falling back step by step: (1) the project file through the share sheet, (2) the tab as text through
+  // the share sheet, (3) the tab text copied to the clipboard, (4) the .json file saved like Export.
+  // v7 bug (Android Chrome/Brave): Chromium only shares files whose type is on its allowlist (text, images, PDF...);
+  // application/json is not, yet canShare({files}) still said yes, so share() was refused and we only showed
+  // "Share failed". The file now goes as text/plain named .json.txt (the same JSON inside; Import takes it).
+  // Cancelling the share sheet (AbortError) ends the chain quietly. Each step that fails falls through to the next.
+  var shareLog = [];
+  function shareFileFor() {
     var f = fileFor('project');
-    navigator.share({ files: [new File([f.blob], f.name, { type: 'application/json' })], title: project().title || 'Guitar tab' })
-      .catch(function (e) { if (e && e.name !== 'AbortError') toast('Share failed. Use Export instead.'); });
+    return new File([f.blob], f.name.replace(/\.json$/, '.json.txt'), { type: 'text/plain' });
+  }
+  function shareText() {
+    var p = project(), title = p.title || 'Guitar tab';
+    return { title: title, text: title + '\n\n' + toAscii(16) };
+  }
+  function canShare(data) { try { return !!(navigator.canShare && navigator.canShare(data)); } catch (e) { return false; } }
+  function share() {
+    var p = project(), title = p.title || 'Guitar tab', file = null, tx = shareText(), log = shareLog = [];
+    var aborted = function (e) { return e && e.name === 'AbortError'; };
+    function viaFile() {
+      try { file = shareFileFor(); } catch (e) { file = null; }
+      if (!navigator.share || !file || !canShare({ files: [file] })) { log.push('files:skip'); return Promise.reject({ skip: true }); }
+      log.push('files');
+      return navigator.share({ files: [file], title: title });
+    }
+    function viaText() {
+      if (!navigator.share || (navigator.canShare && !canShare({ title: tx.title, text: tx.text }))) { log.push('text:skip'); return Promise.reject({ skip: true }); }
+      log.push('text');
+      return navigator.share({ title: tx.title, text: tx.text });
+    }
+    function viaClipboard() {
+      if (!navigator.clipboard || !navigator.clipboard.writeText) { log.push('clipboard:skip'); return Promise.reject({ skip: true }); }
+      log.push('clipboard');
+      return navigator.clipboard.writeText(tx.text).then(function () { toast("Sharing isn't available here: tab copied as text"); });
+    }
+    function viaDownload() {
+      log.push('download');
+      var f = fileFor('project'), url = URL.createObjectURL(f.blob), a = document.createElement('a');
+      a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      toast("Sharing isn't available here: saved " + f.name);
+    }
+    function note(stage) { return function (e) { if (aborted(e)) { log.push('abort'); throw e; } if (e && !e.skip) log.push(stage + ':fail:' + (e.name || 'Error')); }; }
+    // the first share() call runs synchronously inside the tap, so it has the user activation
+    var chain;
+    try { chain = viaFile(); } catch (e0) { chain = Promise.reject(e0); }
+    return chain.then(function () { log.push('done'); }, function (e) {
+      note('files')(e);
+      return viaText().then(function () { log.push('done'); }, function (e2) {
+        note('text')(e2);
+        return viaClipboard().then(function () { log.push('done'); }, function (e3) {
+          note('clipboard')(e3);
+          viaDownload(); log.push('done');
+        });
+      });
+    }).catch(function (e) { if (!aborted(e)) { log.push('error'); toast('Share failed. Use Export instead.'); } });
   }
   function importFile(file) {
     if (!file) return;
@@ -925,13 +1197,13 @@
       var p = project();
       if (b.id === 'track-add') {
         if (p.tracks.length >= M.LIMITS.tracks) { toast('Up to ' + M.LIMITS.tracks + ' tracks per project'); return; }
-        var t = M.newTrack('Guitar ' + (p.tracks.length + 1)); t.tuning = JSON.parse(JSON.stringify(track().tuning));
-        p.tracks.push(t); p.activeTrackId = t.id; changed(); toast('Added ' + t.name + ' (armed)');
+        var t = M.newTrack('Guitar ' + (p.tracks.length + 1)); t.tuning = JSON.parse(JSON.stringify(track().tuning)); t.style = M.trackStyle(track());
+        var aft = keepTick(function () { p.tracks.push(t); p.activeTrackId = t.id; }); changed(); aft(); toast('Added ' + t.name + ' (armed)');
         return;
       }
       var row = b.closest('.trk'); if (!row) return;
       var tr = p.tracks.filter(function (x) { return x.id === row.dataset.track; })[0]; if (!tr) return;
-      if (b.dataset.act === 'arm') { p.activeTrackId = tr.id; save(); render(); }
+      if (b.dataset.act === 'arm') { var af = keepTick(function () { p.activeTrackId = tr.id; }); save(); render(); af(); }
       else if (b.dataset.act === 'mute') { tr.mute = !tr.mute; save(); render(); }
       else if (b.dataset.act === 'solo') { tr.solo = !tr.solo; save(); render(); }
     });
@@ -958,6 +1230,7 @@
       cur.str = Number(d.dataset.str); moveStep(Number(d.dataset.col) - cur.cell);
     });
     on('picker-done', 'click', closePicker);
+    bindChords();
     els.scrim.addEventListener('click', closePicker);
 
     // idea notes (pinned)
@@ -994,7 +1267,7 @@
       var p = project(), t = track();
       if (p.tracks.length <= 1) { toast('A project needs at least one track'); return; }
       if (!confirm('Delete track "' + (t.name || 'Untitled') + '"? (Undo can bring it back.)')) return;
-      p.tracks = p.tracks.filter(function (x) { return x.id !== t.id; }); p.activeTrackId = p.tracks[0].id; changed();
+      var af2 = keepTick(function () { p.tracks = p.tracks.filter(function (x) { return x.id !== t.id; }); p.activeTrackId = p.tracks[0].id; }); changed(); af2();
     });
     els.timesig.addEventListener('change', function () {
       stopPlay(); var tick = cell().start, p = project();
@@ -1051,11 +1324,13 @@
     var buf = '', bufT = null;
     document.addEventListener('keydown', function (e) {
       var t = e.target, typing = t && (t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && t.type !== 'range'));
+      if (CH.open && e.key === 'Escape' && els.modal.hidden) { if (CH.sel) { CH.sel = null; renderChords(); } else closeChords(); e.preventDefault(); return; }
       if (typing || !els.modal.hidden || e.altKey) return;
       var k = e.key;
       if ((e.ctrlKey || e.metaKey) && (k === 'z' || k === 'Z')) { if (e.shiftKey) redo(); else undo(); e.preventDefault(); return; }
       if ((e.ctrlKey || e.metaKey) && (k === 'y' || k === 'Y')) { redo(); e.preventDefault(); return; }
       if (e.ctrlKey || e.metaKey) return;
+      if (CH.open) return;
       if (k === 'Escape') { if (pickerOpen) closePicker(); else if (drawerOpen) closeDrawer(); e.preventDefault(); }
       else if (k === ' ' && !pickerOpen) { playPause(); e.preventDefault(); }
       else if (k === 'Home' && !pickerOpen) { backToStart(); e.preventDefault(); }
@@ -1078,11 +1353,11 @@
     });
     // Another window of this site saved: pick up its library.
     window.addEventListener('storage', function (e) {
-      if (e.key !== STORE_KEY || A.isPlaying()) return;
+      if (e.key !== LIB_KEY || A.isPlaying()) return;
       var r = loadLibrary(); if (!r.restored) return;
       lib = r.lib; hist = {}; render();
     });
-    window.addEventListener('resize', function () { syncRulerWidths(); fitPos(); if (pickerOpen) fitPicker(); });
+    window.addEventListener('resize', function () { syncRulerWidths(); fitPos(); if (pickerOpen) fitPicker(); if (CH.open && CH.sel) fitChords(); });
   }
 
   function init() {
@@ -1090,7 +1365,6 @@
     var r = loadLibrary();
     lib = r.lib;
     bind();
-    if (canShareFiles()) els.shareBtn.hidden = false;
     CL = cellsOf();
     if (r.restored) cur.cell = M.cellIndexAt(CL, phTick());
     render();
@@ -1098,7 +1372,7 @@
       var d = new Date(project().updatedAt);
       els.saveState.textContent = 'Restored ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
       els.saveState.className = 'save-state ok';
-      if (r.migratedFrom) { save(); toast('Library upgraded to multi-track (old copy kept as a backup)'); }
+      if (r.migratedFrom) { save(); toast(r.migratedFrom >= 4 ? 'Library upgraded: note style is now per track (old copy kept as a backup)' : 'Library upgraded to multi-track (old copy kept as a backup)'); }
       showWarnings(r.warnings);
     } else save();
     var seen = false; try { seen = !!localStorage.getItem(HINT_KEY); } catch (e) { seen = false; }
@@ -1110,9 +1384,10 @@
   window.__guitarTab = { get library() { return JSON.parse(JSON.stringify(lib)); }, toAscii: function () { return toAscii(16); }, audioState: A.state, isPlaying: A.isPlaying,
     playhead: function () { return phCell(); }, playheadTick: function () { return phTick(); }, playingStep: function () { return playingStep; },
     editStep: function () { return cur.cell; }, cells: function () { return JSON.parse(JSON.stringify(CL)); }, grid: function () { return JSON.parse(JSON.stringify(grid())); },
+    trackCells: function (i) { return JSON.parse(JSON.stringify(cellsOf(project().tracks[i]))); }, shareLog: function () { return shareLog.slice(); },
     audible: function () { return M.audibleTracks(project()).map(function (t) { return t.id; }); },
     history: function () { var h = H(); return { undo: h.undo.length, redo: h.redo.length }; },
-    lastNote: function () { return A.lastNote(); }, scheduled: function () { return A.scheduled(); },
+    lastNote: function () { return A.lastNote(); }, chords: function () { return { open: CH.open, sel: CH.sel, mode: CH.mode, loaded: !!CH.list }; }, scheduled: function () { return A.scheduled(); },
     bpmHold: function () { return { holding: !!hold, log: holdLog.slice(), curve: HOLD }; },
     rhythm: function () { var p = project(); return groups(p, CL, buckets(track())).map(function (g) { return { len: g.len, beam: g.beam, beams: g.beamLevels, dot: g.dot, tp: g.tp, bracket: g.tpBracket, num: g.tpNum }; }); } };
   init();

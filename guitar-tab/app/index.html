@@ -69,8 +69,8 @@
 <section class="toolbar" aria-label="Edit tools">
   <div class="grid-sel" role="group" aria-label="Grid">
     <select id="grid-select" class="field" aria-label="Grid note value (1/1 to 1/64)"></select>
-    <span class="gstyle" role="group" aria-label="Note style">
-      <button type="button" class="gs" id="grid-dot" aria-pressed="false" aria-label="Dotted grid" title="Dotted: 1.5 × the value (key .)">·</button><button type="button" class="gs" id="grid-trip" aria-pressed="false" aria-label="Triplet grid" title="Triplet: 3 in the time of 2 (key T)">3</button>
+    <span class="gstyle" id="grid-style" role="group" aria-label="Note style">
+      <span class="gs-trk c0" id="grid-trk" aria-hidden="true">1</span><button type="button" class="gs" id="grid-dot" aria-pressed="false" aria-label="Dotted grid" title="Dotted: 1.5 × the value (key .)">·</button><button type="button" class="gs" id="grid-trip" aria-pressed="false" aria-label="Triplet grid" title="Triplet: 3 in the time of 2 (key T)">3</button>
     </span>
   </div>
   <button type="button" class="tb sm" id="prev-col" aria-label="Previous step">‹</button>
@@ -164,9 +164,9 @@
       <button type="button" class="btn sm go" id="export-midi">Export MIDI (.mid)</button>
       <button type="button" class="btn sm" id="export-all">Export all (.json)</button>
       <button type="button" class="btn sm" id="import-btn">Import (.json)</button>
-      <button type="button" class="btn sm" id="share-btn" hidden>Share project</button>
+      <button type="button" class="btn sm span2" id="share-btn">Share project</button>
     </div>
-    <input type="file" id="import-file" accept=".json,application/json" hidden>
+    <input type="file" id="import-file" accept=".json,.txt,application/json,text/plain" hidden>
     <p class="note">Saved in this browser only. Export is your backup and how you move a project to another device.</p>
     <p class="note">Used the old address (maximini22.github.io/github-tab)? Saved work doesn't carry over between web addresses: Export there, then Import here.</p>
   </section>
@@ -205,12 +205,47 @@
         <button type="button" class="btn sm" id="pick-mute">x Muted</button>
         <button type="button" class="btn sm" id="pick-clear">Clear</button>
       </div>
+      <button type="button" class="btn sm chords-open" id="chords-open" aria-haspopup="dialog"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 8h16M9.3 8v13M14.7 8v13M4 12.3h16M4 16.6h16"/></svg>Chords</button>
       <p class="picker-tip" id="picker-tip" aria-live="polite"></p>
       <div class="pnav" role="group" aria-label="Move through the song">
         <button type="button" class="btn sm" id="picker-prev" aria-label="Back one step">‹ Back<br>step</button>
         <button type="button" class="btn sm go" id="picker-next" aria-label="Next step">Next<br>step ›</button>
         <button type="button" class="btn sm" id="picker-prev-bar" aria-label="Back one bar">« Bar</button>
         <button type="button" class="btn sm" id="picker-next-bar" aria-label="Next bar">Bar »</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Chord library (opened from the step editor): boxes drawn like the app's neck, high e on the left -->
+<div class="sheet-scrim csheet-scrim" id="chords-scrim" hidden></div>
+<section class="sheet csheet" id="chords" role="dialog" aria-modal="true" aria-labelledby="chords-h" hidden>
+  <div class="sheet-head">
+    <div class="ph-text"><span class="card-h" id="chords-h">Chord library</span><span class="picker-sub" id="chords-sub"></span></div>
+    <button type="button" class="btn sm" id="chords-close">Close</button>
+  </div>
+  <label class="csearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg><input class="field" type="search" id="chords-q" placeholder="Search: Em, F#m, power, sus…" aria-label="Search chords" autocomplete="off" spellcheck="false"></label>
+  <div class="cfilters" id="chords-fam" role="group" aria-label="Chord families"></div>
+  <div class="cwrap-o"><div class="cwrap" id="chords-list"></div></div>
+  <p class="cfoot" id="chords-foot"></p>
+  <div class="cdetail" id="chords-detail" hidden>
+    <div class="cd-head">
+      <div class="cd-name"><b id="cd-name"></b><span id="cd-info"></span></div>
+    </div>
+    <p class="cd-note" id="cd-note" hidden></p>
+    <div class="roll-cap"><span id="cd-bar"></span><span id="cd-cap"></span></div>
+    <div class="roll" id="cd-roll" aria-hidden="true"></div>
+    <div class="picker-body cbody">
+      <div class="cneck"><div class="cstr" id="cd-str" aria-hidden="true"></div><div class="neck" id="cd-neck" role="img"></div></div>
+      <div class="picker-side cside">
+        <span class="sec-lab">Shape <small>high e first</small></span>
+        <div class="cside-chips" id="cd-chips"></div>
+        <div class="pk2" role="group" aria-label="How to drop it">
+          <button type="button" class="btn sm on" id="cd-strum" aria-pressed="true">Strum ↓</button>
+          <button type="button" class="btn sm" id="cd-arp" aria-pressed="false">Arp</button>
+        </div>
+        <button type="button" class="btn go drop" id="cd-drop">Drop into measure</button>
+        <button type="button" class="btn sm cancel" id="cd-cancel">Cancel</button>
       </div>
     </div>
   </div>
@@ -229,6 +264,7 @@
 <script src="js/audio.js"></script>
 <script src="js/model.js"></script>
 <script src="js/midi.js"></script>
+<script src="js/chords.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

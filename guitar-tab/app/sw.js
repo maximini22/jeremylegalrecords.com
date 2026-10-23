@@ -1,5 +1,5 @@
 /* Quiet offline cache for the app at /app/ (scope ./). Bump VERSION when shell files change. */
-var VERSION = 'jlr-guitar-tab-v7';
+var VERSION = 'jlr-guitar-tab-v8';
 var SHELL = [
   './',
   './index.html',
@@ -7,6 +7,8 @@ var SHELL = [
   './js/audio.js',
   './js/model.js',
   './js/midi.js',
+  './js/chords.js',
+  './chords.json',
   './js/app.js',
   './manifest.webmanifest',
   '../css/jlr-theme.css',

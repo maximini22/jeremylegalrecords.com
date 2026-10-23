@@ -1,10 +1,10 @@
-/* Guitar Tab data model (schemaVersion 4). MIDI-ready: ticks at a fixed PPQ, tuning as MIDI note numbers.
+/* Guitar Tab data model (schemaVersion 5). MIDI-ready: ticks at a fixed PPQ, tuning as MIDI note numbers.
  * One project = one shared timeline (BPM, time signature, length, loop) with up to 3 tracks.
- * Each track has its own tuning, notes and mixer settings. See docs/USER-GUIDE.md. Exposed as window.TabModel. */
+ * Each track has its own tuning, note style (plain / dotted / triplet), notes and mixer settings. See docs/USER-GUIDE.md. Exposed as window.TabModel. */
 (function () {
   'use strict';
   var SCHEMA = 'jlr-guitar-tab';
-  var SCHEMA_VERSION = 4;
+  var SCHEMA_VERSION = 5; // 5 (v8): note style per track; the project grid keeps only the value
   var PPQ = 480;
   var STRINGS = 6;
   var MAX_FRET = 22; // frets 0-22 (was 16 up to v5; files from then are a subset)
@@ -103,7 +103,22 @@
   function nameTicks(t) { for (var i = 0; i < NAMED.length; i++) if (NAMED[i].ticks === t) return JSON.parse(JSON.stringify(NAMED[i].d)); return null; }
 
   function newTrack(name, tuningId) {
-    return { id: uid(), name: name || 'Guitar', tuning: tuningFromId(tuningId || DEFAULT_TUNING), volume: DEFAULT_VOLUME, mute: false, solo: false, notes: [] };
+    return { id: uid(), name: name || 'Guitar', tuning: tuningFromId(tuningId || DEFAULT_TUNING), style: 'plain', volume: DEFAULT_VOLUME, mute: false, solo: false, notes: [] };
+  }
+  // A track's effective grid: the project's value (1/1 .. 1/64) with the track's own style.
+  function trackStyle(t) { return t && GRID_STYLES.indexOf(t.style) >= 0 ? t.style : 'plain'; }
+  function trackGrid(p, t) { return makeGrid(p.grid && p.grid.value, trackStyle(t)); }
+  // A schemaVersion 4 copy of a library (what v7 and earlier read): each project's grid takes the armed track's
+  // style, and the per-track styles are left out. Notes keep their ticks, so nothing moves.
+  function toV4(lib) {
+    var out = JSON.parse(JSON.stringify(lib));
+    out.schemaVersion = 4;
+    (out.projects || []).forEach(function (p) {
+      var a = p.tracks.filter(function (t) { return t.id === p.activeTrackId; })[0] || p.tracks[0];
+      p.grid = makeGrid(p.grid && p.grid.value, trackStyle(a));
+      p.tracks.forEach(function (t) { delete t.style; });
+    });
+    return out;
   }
   function newProject(title) {
     var tr = newTrack('Guitar 1');
@@ -231,6 +246,7 @@
     if (t.volume != null && !isInt(t.volume, 0, 100)) return where + ': volume must be 0 to 100.';
     if (t.mute != null && typeof t.mute !== 'boolean') return where + ': bad mute.';
     if (t.solo != null && typeof t.solo !== 'boolean') return where + ': bad solo.';
+    if (t.style != null && GRID_STYLES.indexOf(t.style) < 0) return where + ': unknown note style.';
     return checkNotes(t, where, measureTicks(p) * LIMITS.measures);
   }
   function checkProject(p, where, v) {
@@ -260,7 +276,7 @@
     if (obj.schemaVersion == null && obj.version === 1) return migrateV1(obj);
     if (!isInt(obj.schemaVersion, 2, 1000)) return { error: 'Missing or unsupported schemaVersion.' };
     var v = obj.schemaVersion;
-    if (v > SCHEMA_VERSION) return { error: 'Made by a newer version (schemaVersion ' + v + ').' };
+    if (v > SCHEMA_VERSION) return { error: 'This file was made by a newer version of Guitar Tab (schemaVersion ' + v + '; this app reads up to ' + SCHEMA_VERSION + '). Reload the app to update it, then import the file again.', newer: true };
     if (obj.ppq !== PPQ) return { error: 'Unsupported ppq ' + obj.ppq + ' (expected ' + PPQ + ').' };
     if (!Array.isArray(obj.projects) || obj.projects.length < 1 || obj.projects.length > LIMITS.projects) return { error: 'No projects in file.' };
     for (var i = 0; i < obj.projects.length; i++) { var e = checkProject(obj.projects[i], 'Project ' + (i + 1), v); if (e) return { error: e }; }
@@ -320,21 +336,22 @@
       src = src.slice(0, LIMITS.tracks);
     }
     var seenIds = {};
+    // v8: the note style lives on each track. Older files (one style for the whole project) give it to every track.
+    var g = normGrid(p.grid), projStyle = gridStyle(g.grid);
     var tracks = src.map(function (t) {
       var id = typeof t.id === 'string' && t.id ? t.id.slice(0, 64) : uid();
       if (seenIds[id]) id = uid(); seenIds[id] = 1;
       var tun = canonicalTuning(t.tuning.midi);
       if (tun.id === 'custom' && TUNING_BY_ID[t.tuning.id] == null && t.tuning.id !== 'custom') warnings.push(label + ' track "' + t.name + '": tuning ' + (t.tuning.name || t.tuning.id) + ' shown as Custom (imported).');
       return {
-        id: id, name: t.name.slice(0, LIMITS.name), tuning: tun,
+        id: id, name: t.name.slice(0, LIMITS.name), tuning: tun, style: GRID_STYLES.indexOf(t.style) >= 0 ? t.style : projStyle,
         volume: t.volume == null ? DEFAULT_VOLUME : clampInt(t.volume, 0, 100), mute: !!t.mute, solo: !!t.solo,
         notes: t.notes.map(function (n) { return { string: n.string, fret: n.fret, startTick: n.startTick, durationTicks: 0, techniques: n.techniques.slice(0, 10) }; })
       };
     });
-    var g = normGrid(p.grid);
     if (g.changed) warnings.push(label + ': grid ' + DUR_FRACTION[p.grid.value] + (p.grid.dotted ? ' dotted' : '') + (p.grid.tuplet ? ' ' + p.grid.tuplet.actual + ':' + p.grid.tuplet.normal + ' tuplet' : '') + ' is now ' + gridLabel(g.grid) + ' (notes did not move).');
     var active = tracks.some(function (t) { return t.id === p.activeTrackId; }) ? p.activeTrackId : tracks[0].id;
-    var out = { id: p.id, title: p.title.slice(0, LIMITS.title), bpm: clampInt(p.bpm || 90, 30, 300), grid: g.grid,
+    var out = { id: p.id, title: p.title.slice(0, LIMITS.title), bpm: clampInt(p.bpm || 90, 30, 300), grid: { value: g.grid.value },
       timeSignature: p.timeSignature.slice(), lengthTicks: p.lengthTicks,
       loop: { enabled: !!(p.loop && p.loop.enabled), startMeasure: (p.loop && p.loop.startMeasure) || 1, endMeasure: (p.loop && p.loop.endMeasure) || 1 },
       idea: typeof p.idea === 'string' ? p.idea.slice(0, LIMITS.idea) : '',
@@ -375,7 +392,7 @@
     uid: uid, nowIso: nowIso, durTicks: durTicks, durLabel: durLabel, nameTicks: nameTicks, defaultGrid: defaultGrid, makeGrid: makeGrid, normGrid: normGrid,
     isTriplet: isTriplet, gridStyle: gridStyle, gridLabel: gridLabel, gridName: gridName,
     measureTicks: measureTicks, beatTicks: beatTicks, tuningLabels: tuningLabels, tuningFromId: tuningFromId, canonicalTuning: canonicalTuning,
-    newTrack: newTrack, newProject: newProject, newLibrary: newLibrary, recompute: recompute, measureCount: measureCount,
+    newTrack: newTrack, trackStyle: trackStyle, trackGrid: trackGrid, toV4: toV4, newProject: newProject, newLibrary: newLibrary, recompute: recompute, measureCount: measureCount,
     measureOfTick: measureOfTick, cells: cells, cellIndexAt: cellIndexAt, audibleTracks: audibleTracks,
     parseFile: parseFile, normaliseProject: normaliseProject, midiOf: midiOf
   };
