@@ -1,5 +1,8 @@
-/* Quiet offline cache for the app at /app/ (scope ./). Bump VERSION when shell files change. */
-var VERSION = 'jlr-guitar-tab-v8-2';
+/* Quiet offline cache for the app at /app/ (scope ./). Bump VERSION when shell files change.
+ * v9: the sampled Sounds (tones/*.mp3 + .json) are not part of the shell. They load on demand into their own cache,
+ * TONES (kept across app updates; js/audio.js uses the same cache), and are served from it cache-first. */
+var VERSION = 'jlr-guitar-tab-v9';
+var TONES = 'gt-tones-v1';
 var SHELL = [
   './',
   './index.html',
@@ -41,6 +44,14 @@ self.addEventListener('fetch', function (e) {
       caches.open(VERSION).then(function (c) { c.put('./index.html', copy); });
       return res;
     }).catch(function () { return caches.match('./index.html'); }));
+    return;
+  }
+  if (new URL(req.url).pathname.indexOf('/tones/') >= 0) {
+    e.respondWith(caches.open(TONES).then(function (c) {
+      return c.match(req.url).then(function (hit) {
+        return hit || fetch(req).then(function (res) { if (res.ok) c.put(req.url, res.clone()); return res; });
+      });
+    }));
     return;
   }
   e.respondWith(caches.match(req).then(function (hit) { return hit || fetch(req); }));

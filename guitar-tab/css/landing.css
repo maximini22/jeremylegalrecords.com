@@ -156,6 +156,7 @@ footer img{height:30px;width:auto}
 footer .links{margin-left:auto;display:flex;flex-wrap:wrap;gap:1.2rem}
 footer a{text-decoration:none}
 footer a:hover{color:var(--text)}
+footer .credits{flex-basis:100%;font-size:.78rem}
 /* responsive */
 @media (max-width:980px){
   .hero .wrap{grid-template-columns:1fr}

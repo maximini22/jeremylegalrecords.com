@@ -37,6 +37,19 @@
   var TIME_SIGS = ['4/4', '3/4', '2/4', '6/8'];
   var TECHNIQUES = ['muted', 'hammer-on', 'pull-off', 'slide', 'bend', 'vibrato', 'palm-mute', 'harmonic', 'tap', 'let-ring'];
   var DEFAULT_VOLUME = 80;
+  // v9: each track's Sound (sampled; see app/tones/ and NOTICE). Optional on disk: missing or unknown = Nylon.
+  // bass: true = sounds an octave below the tab (playback and MIDI); the tab itself is unchanged.
+  // program: General MIDI program number, 1-based as printed in the GM sound set (MIDI byte = program - 1).
+  var TONES = [
+    { id: 'nylon', name: 'Nylon', bass: false, program: 25 },
+    { id: 'spanish', name: 'Spanish nylon', bass: false, program: 25 },
+    { id: 'clean', name: 'Clean electric', bass: false, program: 28 },
+    { id: 'upright', name: 'Upright bass', bass: true, program: 33 },
+    { id: 'ebass', name: 'Electric bass', bass: true, program: 34 }
+  ];
+  var DEFAULT_TONE = 'nylon', TONE_BY_ID = {};
+  TONES.forEach(function (t) { TONE_BY_ID[t.id] = t; });
+  function trackTone(t) { return t && TONE_BY_ID[t.tone] ? t.tone : DEFAULT_TONE; }
 
   function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
   function nowIso() { return new Date().toISOString(); }
@@ -103,20 +116,21 @@
   function nameTicks(t) { for (var i = 0; i < NAMED.length; i++) if (NAMED[i].ticks === t) return JSON.parse(JSON.stringify(NAMED[i].d)); return null; }
 
   function newTrack(name, tuningId) {
-    return { id: uid(), name: name || 'Guitar', tuning: tuningFromId(tuningId || DEFAULT_TUNING), style: 'plain', volume: DEFAULT_VOLUME, mute: false, solo: false, notes: [] };
+    return { id: uid(), name: name || 'Guitar', tuning: tuningFromId(tuningId || DEFAULT_TUNING), style: 'plain', tone: DEFAULT_TONE, volume: DEFAULT_VOLUME, mute: false, solo: false, notes: [] };
   }
   // A track's effective grid: the project's value (1/1 .. 1/64) with the track's own style.
   function trackStyle(t) { return t && GRID_STYLES.indexOf(t.style) >= 0 ? t.style : 'plain'; }
   function trackGrid(p, t) { return makeGrid(p.grid && p.grid.value, trackStyle(t)); }
   // A schemaVersion 4 copy of a library (what v7 and earlier read): each project's grid takes the armed track's
-  // style, and the per-track styles are left out. Notes keep their ticks, so nothing moves.
+  // style, and the per-track styles are left out. Notes keep their ticks, so nothing moves. The v9 track Sound (tone) and the
+  // v8.2 metronome are left out too: v7 neither reads nor needs them.
   function toV4(lib) {
     var out = JSON.parse(JSON.stringify(lib));
     out.schemaVersion = 4;
     (out.projects || []).forEach(function (p) {
       var a = p.tracks.filter(function (t) { return t.id === p.activeTrackId; })[0] || p.tracks[0];
       p.grid = makeGrid(p.grid && p.grid.value, trackStyle(a));
-      p.tracks.forEach(function (t) { delete t.style; });
+      p.tracks.forEach(function (t) { delete t.style; delete t.tone; });
       delete p.metronome;
     });
     return out;
@@ -346,6 +360,7 @@
       if (tun.id === 'custom' && TUNING_BY_ID[t.tuning.id] == null && t.tuning.id !== 'custom') warnings.push(label + ' track "' + t.name + '": tuning ' + (t.tuning.name || t.tuning.id) + ' shown as Custom (imported).');
       return {
         id: id, name: t.name.slice(0, LIMITS.name), tuning: tun, style: GRID_STYLES.indexOf(t.style) >= 0 ? t.style : projStyle,
+        tone: trackTone(t), // v9: missing / unknown Sound = Nylon
         volume: t.volume == null ? DEFAULT_VOLUME : clampInt(t.volume, 0, 100), mute: !!t.mute, solo: !!t.solo,
         notes: t.notes.map(function (n) { return { string: n.string, fret: n.fret, startTick: n.startTick, durationTicks: 0, techniques: n.techniques.slice(0, 10) }; })
       };
@@ -390,7 +405,7 @@
     SCHEMA: SCHEMA, SCHEMA_VERSION: SCHEMA_VERSION, PPQ: PPQ, STRINGS: STRINGS, MAX_FRET: MAX_FRET, LIMITS: LIMITS,
     TUNINGS: TUNINGS, TUNING_BY_ID: TUNING_BY_ID, CUSTOM: CUSTOM, DUR_VALUES: DUR_VALUES, DUR_LETTER: DUR_LETTER, DUR_FRACTION: DUR_FRACTION,
     DUR_NAME: DUR_NAME, BEAMS: BEAMS, GRID_STYLES: GRID_STYLES,
-    TIME_SIGS: TIME_SIGS, TECHNIQUES: TECHNIQUES, DEFAULT_VOLUME: DEFAULT_VOLUME,
+    TIME_SIGS: TIME_SIGS, TECHNIQUES: TECHNIQUES, DEFAULT_VOLUME: DEFAULT_VOLUME, TONES: TONES, TONE_BY_ID: TONE_BY_ID, DEFAULT_TONE: DEFAULT_TONE, trackTone: trackTone,
     uid: uid, nowIso: nowIso, durTicks: durTicks, durLabel: durLabel, nameTicks: nameTicks, defaultGrid: defaultGrid, makeGrid: makeGrid, normGrid: normGrid,
     isTriplet: isTriplet, gridStyle: gridStyle, gridLabel: gridLabel, gridName: gridName,
     measureTicks: measureTicks, beatTicks: beatTicks, tuningLabels: tuningLabels, tuningFromId: tuningFromId, canonicalTuning: canonicalTuning,

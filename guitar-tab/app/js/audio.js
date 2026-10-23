@@ -1,8 +1,19 @@
-/* Web Audio plucked-string synth (Karplus-Strong) and a lookahead step scheduler for layered tracks (per-note gain). Exposed as window.TabAudio. */
+/* Web Audio player for sampled guitar and bass Sounds (v9) and a lookahead step scheduler for layered tracks (per-note
+ * gain). Exposed as window.TabAudio. There is no synthesised guitar: every note is a recorded sample, repitched.
+ *
+ * Sounds (tones): one mono 64 kbps MP3 sprite per Sound plus a small JSON manifest, in app/tones/<id>.{mp3,json}
+ * (made by tools/tones/; licences in NOTICE). Guitar Sounds: 17 notes E2..E6 every 3 semitones, about 1.6 s each.
+ * Bass Sounds: 10 notes E1..E3 every 3 semitones (Upright 2.0 s, Electric 1.6 s) and they sound an octave below the
+ * tab. Each note plays from the nearest sample, repitched with playbackRate (at most 1.5 semitones, plus the measured
+ * tuning correction in the manifest's 'cents').
+ * Loading: lazy, one request pair per Sound, kept in its own Cache Storage cache (TONE_CACHE, separate from the app
+ * shell cache, so app updates don't download samples again and samples work offline once used). The app asks for
+ * Nylon right after first paint and for the other Sounds only when a track uses them. Playback waits for the Sounds
+ * it needs (whenReady); a Sound that fails to load falls back to Nylon. */
 (function () {
   'use strict';
   var ctx = null, master = null, unlocked = false;
-  var cache = {};
+  var TONE_CACHE = 'gt-tones-v1', TONE_DIR = 'tones/';
 
   function ensure() {
     if (ctx) return ctx;
@@ -28,50 +39,132 @@
     window.addEventListener(ev, unlock, { capture: true, passive: true });
   });
 
-  function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
-
-  // Karplus-Strong: a noise burst through a damped delay line of one period.
-  function pluckBuffer(midi, muted) {
-    var key = midi + (muted ? 'm' : '');
-    if (cache[key]) return cache[key];
-    var sr = ctx.sampleRate, f = freq(midi);
-    var len = Math.floor(sr * (muted ? 0.12 : 2.4));
-    var buf = ctx.createBuffer(1, len, sr), out = buf.getChannelData(0);
-    var N = Math.max(2, Math.round(sr / f)), line = new Float32Array(N);
-    for (var i = 0; i < N; i++) line[i] = Math.random() * 2 - 1;
-    var decay = muted ? 0.90 : 0.996 - Math.min(0.006, f / 200000), p = 0, prev = 0;
-    for (var n = 0; n < len; n++) {
-      var cur = line[p];
-      var next = decay * 0.5 * (cur + prev);
-      prev = cur; line[p] = next; out[n] = cur;
-      p = (p + 1) % N;
-    }
-    // soften the attack click
-    for (var a = 0; a < Math.min(64, len); a++) out[a] *= a / 64;
-    cache[key] = buf;
-    return buf;
+  // ---------- Sounds ----------
+  function toneDefs() { var M = window.TabModel; return (M && M.TONE_BY_ID) || { nylon: { id: 'nylon', bass: false } }; }
+  function def(id) { var d = toneDefs(); return d[id] || d.nylon; }
+  var tones = {}, listeners = [], reqLog = [];
+  function emit(id) { listeners.forEach(function (f) { try { f(id, tones[id] && tones[id].state); } catch (e) { /* ui */ } }); }
+  // Cache-first through TONE_CACHE (works with or without the service worker, and offline once cached).
+  function getFile(name) {
+    var url = new URL(TONE_DIR + name, document.baseURI).href;
+    var net = function () {
+      reqLog.push({ url: url, t: +performance.now().toFixed(1) });
+      return fetch(url, { credentials: 'same-origin' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r; });
+    };
+    if (!window.caches) return net();
+    return caches.open(TONE_CACHE).then(function (c) {
+      return c.match(url).then(function (hit) {
+        if (hit) return hit;
+        return net().then(function (r) { var keep = r.clone(); return c.put(url, keep).catch(function () { /* full */ }).then(function () { return r; }); });
+      });
+    }, net);
+  }
+  var dctx = null;
+  function decoder() {
+    if (ctx) return ctx;
+    if (!dctx) { var O = window.OfflineAudioContext || window.webkitOfflineAudioContext; dctx = O ? new O(1, 1, 44100) : ensure(); }
+    return dctx;
+  }
+  function decode(ab) {
+    var c = decoder();
+    return new Promise(function (res, rej) { var pr = c.decodeAudioData(ab, res, rej); if (pr && pr.then) pr.then(res, rej); });
+  }
+  // Cut the decoded sprite into one AudioBuffer per note. MP3 decoders differ in how much encoder delay they trim, so
+  // the offset is re-measured: the median shift of each note's 20 %-of-peak crossing from where the manifest has it.
+  function slice(buf, man) {
+    var sr = buf.sampleRate, d = buf.getChannelData(0), shifts = [];
+    man.notes.forEach(function (n) {
+      var a = Math.max(0, Math.floor((n.at - 0.045) * sr)), b = Math.min(d.length, Math.floor((n.at + n.dur) * sr)), pk = 0, i;
+      for (i = a; i < Math.min(b, a + Math.floor(0.6 * sr)); i++) if (Math.abs(d[i]) > pk) pk = Math.abs(d[i]);
+      var lim = Math.min(b, Math.floor((n.at + n.x20 + 0.06) * sr));
+      for (i = a; i < lim; i++) if (Math.abs(d[i]) >= 0.2 * pk) break;
+      if (i < lim) shifts.push(i / sr - (n.at + n.x20));
+    });
+    shifts.sort(function (x, y) { return x - y; });
+    var shift = shifts.length ? shifts[Math.floor(shifts.length / 2)] : 0;
+    if (Math.abs(shift) > 0.04) shift = 0;
+    var c = decoder();
+    return { shift: shift, notes: man.notes.map(function (n) {
+      var s0 = Math.max(0, Math.round((n.at + shift) * sr)), len = Math.max(1, Math.min(d.length - s0, Math.round(n.dur * sr)));
+      var nb = c.createBuffer(1, len, sr);
+      if (nb.copyToChannel) nb.copyToChannel(d.subarray(s0, s0 + len), 0); else nb.getChannelData(0).set(d.subarray(s0, s0 + len));
+      return { root: n.root, cents: n.cents || 0, buf: nb };
+    }) };
+  }
+  function load(id) {
+    if (!toneDefs()[id]) id = 'nylon';
+    var T = tones[id] || (tones[id] = { state: 'idle' });
+    if (T.state === 'ready') return Promise.resolve(id);
+    if (T.promise) return T.promise;
+    T.state = 'loading'; emit(id);
+    T.promise = getFile(id + '.json').then(function (r) { return r.json(); }).then(function (man) {
+      return getFile(id + '.mp3').then(function (r) { return r.arrayBuffer(); }).then(decode).then(function (buf) {
+        var s = slice(buf, man);
+        T.notes = s.notes; T.shift = s.shift; T.gain = man.gain || 1; T.state = 'ready'; T.promise = null; emit(id);
+        return id;
+      });
+    }).catch(function (e) {
+      T.state = 'error'; T.error = String(e && e.message || e); T.promise = null; emit(id);
+      throw e;
+    });
+    return T.promise;
+  }
+  function isReady(id) { return !!(tones[id] && tones[id].state === 'ready'); }
+  // What a track's Sound plays as right now: itself when loaded, Nylon if it failed (and Nylon is loaded), else null.
+  function effective(id) {
+    if (!toneDefs()[id]) id = 'nylon';
+    if (isReady(id)) return id;
+    if (tones[id] && tones[id].state === 'error' && isReady('nylon')) return 'nylon';
+    return null;
+  }
+  // Load every Sound in ids (retrying failed ones once); resolves { failed: [ids that fell back to Nylon] }.
+  // Rejects only if Nylon itself can't be loaded (then nothing can play).
+  function whenReady(ids) {
+    var uniq = []; (ids || []).forEach(function (x) { x = toneDefs()[x] ? x : 'nylon'; if (uniq.indexOf(x) < 0) uniq.push(x); });
+    return Promise.all(uniq.map(function (x) { return load(x).then(function () { return null; }, function () { return x; }); })).then(function (bad) {
+      var failed = bad.filter(Boolean);
+      if (!failed.length) return { failed: [] };
+      return load('nylon').then(function () { return { failed: failed.filter(function (x) { return x !== 'nylon'; }) }; });
+    });
+  }
+  function pick(T, m) {
+    var best = T.notes[0];
+    T.notes.forEach(function (n) { if (Math.abs(n.root - m) < Math.abs(best.root - m)) best = n; });
+    return best;
   }
 
-  // Play one note at time `when` for `dur` seconds (rings a little past, then fades).
+  // Play one note at time `when` for `dur` seconds (rings a little past, then fades). midi = the tab pitch; bass Sounds
+  // play it an octave down. Muted (x) notes: the same sample, darker and choked after ~50 ms. Returns what sounded.
+  var MUTED_PEAK = 0.35;
   function note(midi, when, dur, opts) {
-    var c = ensure(); if (!c) return;
+    var c = ensure(); if (!c) return null;
     opts = opts || {};
-    var muted = !!opts.muted;
-    var src = c.createBufferSource(), g = c.createGain();
-    src.buffer = pluckBuffer(midi, muted);
-    var vol = (muted ? 0.35 : NOTE_PEAK) * (opts.gain == null ? 1 : opts.gain);
-    if (vol <= 0) return;
-    var end = when + Math.max(0.08, dur) + (muted ? 0 : 0.04);
+    var tone = effective(opts.tone || 'nylon'); if (!tone) return null;
+    var T = tones[tone], muted = !!opts.muted, sound = midi + (def(tone).bass ? -12 : 0);
+    var vol = (muted ? MUTED_PEAK : NOTE_PEAK) * (opts.gain == null ? 1 : opts.gain) * T.gain;
+    if (vol <= 0) return null;
+    var smp = pick(T, sound), rate = Math.pow(2, (sound - smp.root) / 12 - smp.cents / 1200);
+    var src = c.createBufferSource(), g = c.createGain(), last = src;
+    src.buffer = smp.buf; src.playbackRate.value = rate;
+    var end = when + Math.max(0.08, dur) + (muted ? 0 : 0.04), stopAt = Math.min(when + smp.buf.duration / rate, end + 0.4);
     g.gain.setValueAtTime(vol, when);
-    g.gain.setTargetAtTime(0, end, 0.04);
-    src.connect(g); g.connect(master);
+    if (muted) {
+      var lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1400; lp.Q.value = 0.5;
+      src.connect(lp); last = lp;
+      g.gain.setTargetAtTime(0, when + 0.035, 0.015); stopAt = Math.min(stopAt, when + 0.2);
+    } else g.gain.setTargetAtTime(0, end, 0.04);
+    last.connect(g); g.connect(master);
     src.start(when);
-    src.stop(Math.min(when + src.buffer.duration, end + 0.4));
+    src.stop(stopAt);
+    return { tone: tone, sound: sound };
   }
   // Metronome click (v8.2): an MPC-style soft woody tick, synthesised (no samples): a band-passed noise burst plus a
-  // short sine blip, ~15 ms decay. Fixed level: half the peak gain of a note on a fresh track (default volume), so
-  // the per-track sliders don't change it. Beat 1 is the full level and a little higher; other beats are softer.
-  var NOTE_PEAK = 0.5, CLICK_SOFT = 0.7, clickNoise = null, pend = [];
+  // short sine blip, ~15 ms decay. Fixed level 0.2 = half the peak gain of a note on a fresh track (default volume),
+  // so the per-track sliders don't change it. Beat 1 is the full level and a little higher; other beats are softer.
+  // CLICK_CAL: the click voice's own make-up gain, measured (tests/v9.mjs "metronome level"): with it, a level-0.2 beat-1
+  // click is 6 dB under a default-volume Nylon note (K-weighted RMS over the first 100 ms through the real output
+  // chain, mean of 8 notes E2..C5). Without it the short tick measured 12.3 dB under, i.e. a quarter, not half.
+  var NOTE_PEAK = 0.5, CLICK_SOFT = 0.7, CLICK_CAL = 2.06, clickNoise = null, pend = [];
   function clickLevel() { var M = window.TabModel, dv = M && M.DEFAULT_VOLUME != null ? M.DEFAULT_VOLUME : 80; return 0.5 * NOTE_PEAK * dv / 100; }
   function click(when, accent) {
     var c = ensure(); if (!c) return;
@@ -80,7 +173,7 @@
       var d = clickNoise.getChannelData(0); for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (c.sampleRate * 0.004));
     }
     var lvl = clickLevel() * (accent ? 1 : CLICK_SOFT), out = c.createGain();
-    out.gain.value = lvl; out.connect(master);
+    out.gain.value = lvl * CLICK_CAL; out.connect(master);
     pend = pend.filter(function (k) { return k.when > c.currentTime; }); pend.push({ out: out, when: when });
     var ns = c.createBufferSource(), bp = c.createBiquadFilter(), ng = c.createGain();
     ns.buffer = clickNoise; bp.type = 'bandpass'; bp.frequency.value = accent ? 2600 : 2000; bp.Q.value = 3.5;
@@ -93,14 +186,20 @@
     return lvl;
   }
   var last = null;
-  function preview(midi, muted) { last = { midi: midi, muted: !!muted }; unlock(); if (!ctx) return; note(midi, ctx.currentTime + 0.01, 0.9, { muted: muted }); }
+  // Preview one note (fret tap, chord). If the Sound isn't loaded yet it starts loading and this tap stays silent.
+  function preview(midi, muted, tone) {
+    last = { midi: midi, muted: !!muted, tone: tone || 'nylon' }; unlock(); if (!ctx) return;
+    if (!effective(tone || 'nylon')) { load(tone || 'nylon').catch(function () { /* falls back */ }); return; }
+    note(midi, ctx.currentTime + 0.01, 0.9, { muted: muted, tone: tone });
+  }
 
   // Scheduler: getSteps() returns [{seconds-free step}] lazily so BPM/edits apply on the next step.
   var timer = null, playing = null;
   function play(opts) {
     stop();
     unlock(); var c = ensure(); if (!c) return false;
-    // opts: { count, startAt, stepAt(i) -> {ticks, notes:[{midi, muted, offset (ticks into the step), ticks (length), gain (0-1), track}]}, bpm(), ppq, loop, onStep(i|null) }
+    // opts: { count, startAt, stepAt(i) -> {ticks, notes:[{midi, muted, offset (ticks into the step), ticks (length), gain (0-1), track, tone}]}, bpm(), ppq, loop, onStep(i|null) }
+    // The caller waits for whenReady(tones) first; a note whose Sound isn't loaded is skipped (never synthesised).
     playing = { opts: opts, i: Math.max(0, Math.min((opts.count || 1) - 1, opts.startAt || 0)), next: c.currentTime + 0.08, queue: [], raf: 0 };
     log = []; clog = [];
     // count-in (v8.2): opts.countIn = { beats, beatTicks } -> one bar of clicks before the first step (accent on 1)
@@ -141,8 +240,9 @@
       var stack = st.notes.length > 6 ? 0.6 : st.notes.length > 2 ? 0.8 : 1;
       st.notes.forEach(function (n) {
         var gain = (n.gain == null ? 1 : n.gain) * stack;
-        if (log.length < 2000) log.push({ midi: n.midi, muted: !!n.muted, at: +(P.next + (n.offset || 0) * spt - t0).toFixed(4), step: P.i, track: n.track == null ? null : n.track, gain: +gain.toFixed(3) });
-        note(n.midi, P.next + (n.offset || 0) * spt, (n.ticks || st.ticks) * spt, { muted: n.muted, gain: gain });
+        var r = note(n.midi, P.next + (n.offset || 0) * spt, (n.ticks || st.ticks) * spt, { muted: n.muted, gain: gain, tone: n.tone });
+        if (log.length < 2000) log.push({ midi: n.midi, muted: !!n.muted, at: +(P.next + (n.offset || 0) * spt - t0).toFixed(4), step: P.i, track: n.track == null ? null : n.track, gain: +gain.toFixed(3),
+          tone: r ? r.tone : null, sound: r ? r.sound : null });
       });
       (st.clicks || []).forEach(function (k) {
         var at = P.next + k.offset * spt, g = click(at, k.accent);
@@ -162,5 +262,13 @@
   }
   window.TabAudio = { unlock: unlock, preview: preview, play: play, stop: stop, isPlaying: function () { return !!playing; },
     lastNote: function () { return last; }, scheduled: function () { return log.slice(); }, clicks: function () { return clog.slice(); },
-    clickLevel: function () { return { level: clickLevel(), soft: CLICK_SOFT, notePeak: NOTE_PEAK, defaultTrackGain: 2 * clickLevel() }; }, state: function () { return ctx ? ctx.state : 'none'; } };
+    clickLevel: function () { return { level: clickLevel(), soft: CLICK_SOFT, notePeak: NOTE_PEAK, defaultTrackGain: 2 * clickLevel() }; }, state: function () { return ctx ? ctx.state : 'none'; },
+    // v9 Sounds
+    TONE_CACHE: TONE_CACHE, load: load, whenReady: whenReady, isReady: isReady, effective: effective,
+    toneState: function (id) { return tones[id] ? tones[id].state : 'idle'; }, onTone: function (f) { listeners.push(f); },
+    toneInfo: function (id) { var T = tones[id]; return T && T.state === 'ready' ? { shift: T.shift, gain: T.gain, notes: T.notes.map(function (n) { return { root: n.root, cents: n.cents, len: n.buf.length, sr: n.buf.sampleRate }; }) } : null; },
+    toneRequests: function () { return reqLog.slice(); },
+    // tests: one note through the real graph (master gain + compressor); n.buf etc. stay private
+    _note: function (midi, when, dur, opts) { return note(midi, when, dur, opts); }, _click: function (when, accent) { return click(when, accent); },
+    _ctx: function () { return ctx; }, _toneBuf: function (id, i) { var T = tones[id]; return T && T.notes && T.notes[i] ? T.notes[i].buf.getChannelData(0) : null; } };
 })();

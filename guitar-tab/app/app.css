@@ -60,7 +60,7 @@ body.daw { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; backg
 
 /* ---- Track headers ---- */
 .tracks { display: flex; flex-direction: column; gap: 4px; padding: 0 10px 6px; }
-.trk { --tc: var(--t0); display: grid; grid-template-columns: minmax(0, 1fr) 36px 36px 30%; align-items: center; gap: 4px; height: 40px;
+.trk { --tc: var(--t0); display: grid; grid-template-columns: minmax(0, 1fr) 58px 34px 34px 24%; align-items: center; gap: 4px; height: 40px;
   padding-right: 8px; border-radius: 9px; background: var(--card); border: 1px solid var(--line); border-left: 5px solid var(--tc); }
 .trk.c1 { --tc: var(--t1); } .trk.c2 { --tc: var(--t2); }
 .trk.armed { border-color: var(--tc); border-left-width: 5px; background: #18233a; }
@@ -70,10 +70,37 @@ body.daw { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; backg
 .trk-arm .nm { font-weight: 700; font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .trk-arm small { font-size: .68rem; color: var(--muted); white-space: nowrap; flex: none; }
 .trk.silent .trk-arm, .trk.silent .vol { opacity: .45; }
-.ms { width: 36px; height: 30px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg2); color: var(--muted); font: 800 .8rem var(--font); }
+.ms { width: 34px; height: 30px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg2); color: var(--muted); font: 800 .8rem var(--font); }
 .ms.m.on { background: var(--amber); border-color: var(--amber); color: #2a1d00; }
 .ms.s.on { background: var(--neon); border-color: var(--neon); color: #062312; }
 .vol { width: 100%; height: 30px; margin: 0; accent-color: var(--tc); background: none; }
+/* v9: per-track Sound button + the Sound list */
+.trk-snd { position: relative; width: 58px; height: 30px; padding: 0 12px 0 5px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg2); color: var(--teal);
+  font: 700 .7rem var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.trk-snd::after { content: ""; position: absolute; right: 5px; top: 12px; border: 4px solid transparent; border-top: 5px solid var(--muted); }
+.trk-snd[aria-expanded="true"] { border-color: var(--teal); background: var(--teal-dim); }
+.trk-snd.loading { color: var(--muted); }
+.trk-snd.loading::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--teal); animation: gt-load 1s linear infinite; transform-origin: left; }
+.trk-snd.failed { color: var(--amber); }
+.trk.silent .trk-snd { opacity: .55; }
+@keyframes gt-load { 0% { transform: scaleX(0); } 100% { transform: scaleX(1); } }
+.tone-pop { position: fixed; z-index: 70; width: 214px; padding: 5px; border-radius: 12px; background: var(--bg2); border: 1px solid var(--teal); box-shadow: 0 12px 34px rgba(0,0,0,.6);
+  display: flex; flex-direction: column; gap: 2px; }
+.tone-pop[hidden] { display: none; }
+.tone-opt { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; min-height: 40px; padding: 3px 10px 3px 28px; border-radius: 8px; position: relative;
+  color: var(--text); text-align: left; font: 700 .86rem var(--font); }
+.tone-opt small { font-size: .66rem; font-weight: 600; color: var(--muted); }
+.tone-opt.bass small { color: var(--blue); }
+.tone-opt:hover, .tone-opt:focus-visible { background: var(--card2); outline: none; }
+.tone-opt[aria-selected="true"] { background: var(--teal-dim); color: var(--neon); }
+.tone-opt[aria-selected="true"]::before { content: ""; position: absolute; left: 11px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: var(--neon); box-shadow: 0 0 8px var(--neon); }
+/* Play while the Sounds load: a ring spins round the button */
+.tb.play.loading { background: var(--neon-dim); color: var(--neon); }
+.tb.play.loading::after { content: ""; position: absolute; width: 26px; height: 26px; border-radius: 50%; border: 3px solid rgba(61,255,138,.25); border-top-color: var(--neon); animation: gt-spin .8s linear infinite; }
+.tb.play.loading svg { visibility: hidden; }
+.tb.play { position: relative; }
+@keyframes gt-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .tb.play.loading::after, .trk-snd.loading::before { animation-duration: 3s; } }
 .trk-add { height: 30px; border-radius: 9px; border: 1px dashed var(--line); color: var(--neon); font-size: .82rem; font-weight: 700; }
 
 /* ---- Arrangement: ruler + grid fill the rest; only they scroll (sideways, and down if very short) ---- */
@@ -197,6 +224,7 @@ body.daw { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; backg
 .card-row .sec-lab { margin: 0; }
 .loop-info, .note { font-size: .78rem; color: var(--muted); margin: 8px 0 0; line-height: 1.4; }
 .links { text-align: center; font-size: .86rem; margin: 6px 0 4px; }
+.links.credits { font-size: .72rem; color: var(--muted); line-height: 1.35; margin-top: 2px; }
 .ascii { margin: 6px 0 0; padding: 10px; max-height: 40vh; overflow: auto; background: var(--bg-deep); border: 1px solid var(--line); border-radius: 12px; font: 400 .78rem/1.4 var(--mono); color: var(--text); white-space: pre; }
 
 /* fret picker: vertical neck */

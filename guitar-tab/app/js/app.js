@@ -346,7 +346,11 @@
       sb.setAttribute('aria-pressed', t.solo ? 'true' : 'false'); sb.setAttribute('aria-label', 'Solo ' + name);
       var vol = document.createElement('input'); vol.type = 'range'; vol.min = 0; vol.max = 100; vol.step = 1; vol.value = t.volume; vol.className = 'vol'; vol.dataset.act = 'vol';
       vol.setAttribute('aria-label', 'Volume ' + name); vol.title = 'Volume ' + t.volume;
-      row.appendChild(arm); row.appendChild(mb); row.appendChild(sb); row.appendChild(vol);
+      // v9: the track's Sound (opens the Sound list)
+      var tn = M.trackTone(t), so = document.createElement('button'); so.type = 'button'; so.className = 'trk-snd' + toneCls(tn); so.dataset.act = 'tone';
+      so.textContent = TONE_SHORT[tn] || 'Nylon'; so.setAttribute('aria-haspopup', 'listbox'); so.setAttribute('aria-expanded', 'false');
+      so.setAttribute('aria-label', 'Sound for ' + name + ': ' + M.TONE_BY_ID[tn].name); so.title = 'Sound: ' + M.TONE_BY_ID[tn].name;
+      row.appendChild(arm); row.appendChild(so); row.appendChild(mb); row.appendChild(sb); row.appendChild(vol);
       frag.appendChild(row);
     });
     if (p.tracks.length < M.LIMITS.tracks) {
@@ -355,6 +359,77 @@
       frag.appendChild(add);
     }
     els.tracks.textContent = ''; els.tracks.appendChild(frag);
+    if (tonesAllowed) wantTones(p);
+  }
+  // ---------- Sounds (v9) ----------
+  var TONE_SHORT = { nylon: 'Nylon', spanish: 'Spanish', clean: 'Clean', upright: 'Upright', ebass: 'E-bass' };
+  var tonesAllowed = false, toneWarned = {}, playWait = null;
+  function toneCls(id) { var st = A.toneState(id); return st === 'loading' ? ' loading' : st === 'error' ? ' failed' : ''; }
+  // Load the Sounds a project uses (only after first paint; only ones never tried, so offline doesn't loop).
+  function wantTones(p) { p.tracks.forEach(function (t) { var id = M.trackTone(t); if (A.toneState(id) === 'idle') A.load(id).catch(function () { toneFailed(id); }); }); }
+  function toneFailed(id) {
+    if (id === M.DEFAULT_TONE || toneWarned[id]) return; toneWarned[id] = 1;
+    toast(M.TONE_BY_ID[id].name + " didn't load (offline?). Playing it as Nylon for now.");
+  }
+  function toneUi() {
+    Array.prototype.forEach.call(els.tracks.querySelectorAll('.trk-snd'), function (b) {
+      var row = b.closest('.trk'), t = project().tracks.filter(function (x) { return x.id === row.dataset.track; })[0];
+      if (!t) return; var id = M.trackTone(t);
+      b.classList.toggle('loading', A.toneState(id) === 'loading'); b.classList.toggle('failed', A.toneState(id) === 'error');
+    });
+  }
+  function startTones() {
+    if (tonesAllowed) return; tonesAllowed = true;
+    A.load(M.DEFAULT_TONE).catch(function () { /* Play retries and explains */ });
+    wantTones(project());
+  }
+  // The Sound list: one shared listbox, opened under (or above) a track's Sound button.
+  var tonePop = null, toneFor = null;
+  function closeTones(focusBack) {
+    if (!tonePop || tonePop.hidden) return;
+    tonePop.hidden = true;
+    var b = els.tracks.querySelector('.trk-snd[aria-expanded="true"]');
+    if (b) { b.setAttribute('aria-expanded', 'false'); if (focusBack) b.focus(); }
+    toneFor = null;
+  }
+  function openTones(btn, tr) {
+    if (!tonePop) {
+      tonePop = document.createElement('div'); tonePop.className = 'tone-pop'; tonePop.id = 'tone-pop'; tonePop.setAttribute('role', 'listbox'); tonePop.hidden = true;
+      M.TONES.forEach(function (d) {
+        var o = document.createElement('button'); o.type = 'button'; o.className = 'tone-opt' + (d.bass ? ' bass' : ''); o.setAttribute('role', 'option'); o.dataset.tone = d.id;
+        o.innerHTML = '<span></span><small></small>'; o.firstChild.textContent = d.name; o.lastChild.textContent = d.bass ? 'Bass · plays an octave down' : 'Guitar';
+        tonePop.appendChild(o);
+      });
+      tonePop.addEventListener('click', function (e) { var o = e.target.closest('.tone-opt'); if (o) setTone(o.dataset.tone); });
+      tonePop.addEventListener('keydown', function (e) {
+        var os = Array.prototype.slice.call(tonePop.children), k = os.indexOf(document.activeElement);
+        if (e.key === 'Escape') { e.preventDefault(); closeTones(true); }
+        else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); os[(k + (e.key === 'ArrowDown' ? 1 : os.length - 1)) % os.length].focus(); }
+      });
+      document.body.appendChild(tonePop);
+      document.addEventListener('pointerdown', function (e) { if (tonePop && !tonePop.hidden && !e.target.closest('#tone-pop, .trk-snd')) closeTones(); }, true);
+    }
+    toneFor = tr.id;
+    var cur0 = M.trackTone(tr), sel = null;
+    Array.prototype.forEach.call(tonePop.children, function (o) { var on = o.dataset.tone === cur0; o.setAttribute('aria-selected', on ? 'true' : 'false'); if (on) sel = o; });
+    tonePop.setAttribute('aria-label', 'Sound for ' + (tr.name || 'track'));
+    btn.setAttribute('aria-expanded', 'true');
+    tonePop.hidden = false;
+    var r = btn.getBoundingClientRect(), h = tonePop.offsetHeight, w = tonePop.offsetWidth, vh = window.innerHeight, vw = document.documentElement.clientWidth;
+    var top = r.bottom + 4 + h <= vh - 4 ? r.bottom + 4 : Math.max(4, r.top - 4 - h);
+    tonePop.style.top = Math.round(top) + 'px'; tonePop.style.left = Math.round(Math.max(6, Math.min(vw - w - 6, r.right - w))) + 'px';
+    if (sel) sel.focus();
+  }
+  function setTone(id) {
+    var p = project(), tr = p.tracks.filter(function (x) { return x.id === toneFor; })[0];
+    closeTones(true);
+    if (!tr || !M.TONE_BY_ID[id] || M.trackTone(tr) === id) return;
+    tr.tone = id; changed();
+    toast((tr.name || 'Track') + ': ' + M.TONE_BY_ID[id].name + (M.TONE_BY_ID[id].bass ? ' (sounds an octave below the tab)' : ''));
+    if (!A.isReady(id)) {
+      toneFor = null;
+      A.load(id).then(function () { restartIfPlaying(); }, function () { toneFailed(id); });
+    }
   }
   function refreshAudible() {
     var p = project(), aud = M.audibleTracks(p);
@@ -590,7 +665,7 @@
         if (tr.notes.length >= M.LIMITS.notes) { toast('Track is full'); return; }
         tr.notes.push({ string: no, fret: muted ? null : fret, startTick: c.start, durationTicks: 0, techniques: tech });
       }
-      A.preview(tr.tuning.midi[cur.str] + (muted ? 0 : fret), muted);
+      A.preview(tr.tuning.midi[cur.str] + (muted ? 0 : fret), muted, M.trackTone(tr));
     }
     changed();
   }
@@ -671,7 +746,30 @@
     for (var t = Math.ceil(start / bt) * bt; t < start + len; t += bt) out.push({ offset: t - start, tick: t, accent: t % bar === 0 });
     return out;
   }
+  // v9: playback waits for the Sounds it needs (Play shows a small loading state); never a synth stand-in.
   function startPlayback(from, opts) {
+    var p = project(), need = [];
+    p.tracks.forEach(function (t) { var id = M.trackTone(t); if (need.indexOf(id) < 0) need.push(id); });
+    if (!need.every(function (id) { return A.isReady(id); })) {
+      A.stop(); if (playWait) playWait.cancel = true;
+      var w = playWait = { cancel: false };
+      if (!tonesAllowed) startTones();
+      A.unlock(); playingStep = null; playProject = null; transportUi(); markPlaying();
+      A.whenReady(need).then(function (res) {
+        if (w.cancel) return; playWait = null;
+        res.failed.forEach(toneFailed);
+        if (project() !== p) { transportUi(); return; }
+        // the steps may have changed while we waited (edits are allowed): clamp
+        startNow(Math.min(from, CL.length - 1), opts);
+      }, function () {
+        if (w.cancel) return; playWait = null; transportUi();
+        toast("Couldn't load the guitar sound. Check your connection, then press Play again.");
+      });
+      return;
+    }
+    startNow(from, opts);
+  }
+  function startNow(from, opts) {
     var p = project(), cl = CL, lp = loopCells(p, cl), n = cl.length;
     from = Math.max(0, Math.min(n - 1, from));
     var base, count, loop;
@@ -689,7 +787,7 @@
         M.audibleTracks(p).forEach(function (t) {
           var ti = p.tracks.indexOf(t);
           notesIn(t, c).forEach(function (e) {
-            notes.push({ midi: t.tuning.midi[e.string - 1] + (e.fret || 0), muted: e.fret === null, offset: e.startTick - c.start, ticks: e.durationTicks, gain: t.volume / 100, track: ti });
+            notes.push({ midi: t.tuning.midi[e.string - 1] + (e.fret || 0), muted: e.fret === null, offset: e.startTick - c.start, ticks: e.durationTicks, gain: t.volume / 100, track: ti, tone: M.trackTone(t) });
           });
         });
         return { ticks: c.len, notes: notes, clicks: p.metronome ? clicksIn(p, c.start, c.len) : null };
@@ -709,24 +807,27 @@
     playingStep = from; playProject = p.id; playheads[p.id] = cl[from].start;
     transportUi(); markPlaying();
   }
-  function playPause() { if (A.isPlaying()) stopPlay(); else startPlayback(phCell(), { countIn: true }); }
+  function playPause() { if (A.isPlaying() || playWait) stopPlay(); else startPlayback(phCell(), { countIn: true }); }
   function startCell() { var lp = loopCells(project(), CL); return lp ? lp.a : 0; }
   // Back to start: jumps to the loop start (loop on) or bar 1; keeps playing if playing.
   function backToStart() { if (A.isPlaying()) startPlayback(startCell()); else { setPlayhead(startCell()); toast('Back to start'); } }
   // Stop (and Pause) keep the playhead where it stopped; Stop while already stopped returns to the start.
   function stopPlay(opts) {
     var was = A.isPlaying();
+    if (playWait) { playWait.cancel = true; playWait = null; was = true; }
     A.stop();
     if (was) savePlayheads();
     else if (opts && opts.user) { setPlayhead(startCell()); toast('Back to start'); }
     playingStep = null; playProject = null; transportUi(); markPlaying(); markPlayhead();
   }
   function transportUi() {
-    var on = A.isPlaying();
+    var on = A.isPlaying(), wait = !!playWait && !on;
     els.playBtn.classList.toggle('on', on);
+    els.playBtn.classList.toggle('loading', wait);
     els.playBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    els.playBtn.setAttribute('aria-label', on ? 'Pause' : 'Play');
-    els.playBtn.title = on ? 'Pause (Space)' : 'Play (Space)';
+    els.playBtn.setAttribute('aria-busy', wait ? 'true' : 'false');
+    els.playBtn.setAttribute('aria-label', wait ? 'Loading sound… (press to cancel)' : on ? 'Pause' : 'Play');
+    els.playBtn.title = wait ? 'Loading sound…' : on ? 'Pause (Space)' : 'Play (Space)';
   }
   function markPlaying() {
     var mine = playProject === project().id;
@@ -978,7 +1079,8 @@
   function previewChord(c) {
     if (!c) return;
     var tr = track(), ps = C.pitches(c, tr.tuning.midi), gap = CH.mode === 'arp' ? 170 : 28;
-    ps.forEach(function (m, k) { if (!k) A.preview(m); else setTimeout(function () { A.preview(m); }, k * gap); });
+    var tn = M.trackTone(tr);
+    ps.forEach(function (m, k) { if (!k) A.preview(m, false, tn); else setTimeout(function () { A.preview(m, false, tn); }, k * gap); });
   }
   function selectChord(id) {
     var c = chordById(id); if (!c) return;
@@ -1274,6 +1376,7 @@
       if (b.dataset.act === 'arm') { var af = keepTick(function () { p.activeTrackId = tr.id; }); save(); render(); af(); }
       else if (b.dataset.act === 'mute') { tr.mute = !tr.mute; save(); render(); }
       else if (b.dataset.act === 'solo') { tr.solo = !tr.solo; save(); render(); }
+      else if (b.dataset.act === 'tone') { if (tonePop && !tonePop.hidden && toneFor === tr.id) closeTones(); else openTones(b, tr); }
     });
     els.tracks.addEventListener('input', function (e) {
       var v = e.target.closest('.vol'); if (!v) return;
@@ -1447,6 +1550,20 @@
     var seen = false; try { seen = !!localStorage.getItem(HINT_KEY); } catch (e) { seen = false; }
     els.hint.hidden = seen;
     if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(function () {});
+    // v9: Sounds load after first paint and the load event (Nylon first, then whatever this project uses).
+    A.onTone(function () { toneUi(); });
+    // Wait for both the load event and the first contentful paint (headless/fast loads can paint after load).
+    var painted = false, loaded = document.readyState === 'complete', go = function () { if (painted && loaded) setTimeout(startTones, 0); };
+    var hasFcp = function () { return performance.getEntriesByName && performance.getEntriesByName('first-contentful-paint').length > 0; };
+    if (hasFcp()) painted = true;
+    else if (window.PerformanceObserver && (PerformanceObserver.supportedEntryTypes || []).indexOf('paint') >= 0) {
+      var po = new PerformanceObserver(function () { if (hasFcp() && !painted) { painted = true; po.disconnect(); go(); } });
+      po.observe({ type: 'paint', buffered: true });
+      setTimeout(function () { if (!painted) { painted = true; go(); } }, 3000); // nothing painted (hidden tab): don't wait forever
+    } else painted = true;
+    if (!loaded) window.addEventListener('load', function () { loaded = true; go(); }, { once: true });
+    go();
+    window.addEventListener('resize', function () { closeTones(); });
   }
 
   // Read-only hook for automated checks.
@@ -1458,6 +1575,7 @@
     history: function () { var h = H(); return { undo: h.undo.length, redo: h.redo.length }; },
     lastNote: function () { return A.lastNote(); }, chords: function () { var c = CH.open ? selChord() : null; return { open: CH.open, sel: CH.sel, mode: CH.mode, loaded: !!CH.list, mv: CH.mv && { shape: CH.mv.shape, r: CH.mv.r, n: CH.mv.n },
       cur: c && { name: c.name, code: C.code(c), frets: c.frets.slice(), fingers: c.fingers.slice(), barre: c.barre, notes: C.notes(c) } }; }, scheduled: function () { return A.scheduled(); },
+    toneState: function (id) { return A.toneState(id); }, toneRequests: function () { return A.toneRequests(); }, waiting: function () { return !!playWait; },
     bpmHold: function () { return { holding: !!hold, log: holdLog.slice(), curve: HOLD }; },
     rhythm: function () { var p = project(); return groups(p, CL, buckets(track())).map(function (g) { return { len: g.len, beam: g.beam, beams: g.beamLevels, dot: g.dot, tp: g.tp, bracket: g.tpBracket, num: g.tpNum }; }); } };
   init();

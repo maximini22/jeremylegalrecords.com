@@ -4,9 +4,14 @@
  * Layout (see docs/USER-GUIDE.md, "MIDI export"):
  *   MThd format 1, division 480 (same PPQ as the JSON, so ticks copy straight across).
  *   Track 0 (conductor): project title, tempo, time signature, loop start/end markers when the loop is on.
- *   Then one MTrk per exported guitar track: name, tuning (Instrument Name), Program 25 (steel guitar),
- *   CC7 = volume, its own channel (track 1 -> ch 1, 2 -> ch 2, 3 -> ch 3), and the notes.
+ *   Then one MTrk per exported guitar track: name, tuning (Instrument Name), a GM program from the track's Sound
+ *   (v9, below), CC7 = volume, its own channel (track 1 -> ch 1, 2 -> ch 2, 3 -> ch 3), and the notes.
+ * Programs (v9): GM numbers as printed in the GM 1 sound set (1-based): Nylon 25 and Spanish nylon 25 (Acoustic Guitar
+ *   (nylon)), Clean electric 28 (Electric Guitar (clean)), Upright bass 33 (Acoustic Bass), Electric bass 34 (Electric
+ *   Bass (finger)). The Program Change data byte is the number minus 1 (24, 24, 27, 32, 33). v8.2 and earlier wrote
+ *   byte 25 for every track, which players read as GM 26, Acoustic Guitar (steel).
  * Notes: pitch = open string + fret; note on at startTick, off at startTick + durationTicks (the gated length).
+ *   Bass Sounds (Upright bass, Electric bass) sound an octave below the tab, so their notes are written 12 lower.
  *   Muted (x): open-string pitch, velocity 30, 60 ticks (1/32). Hammer-on / pull-off: velocity 67 and the
  *   previous note on that string is held 10 ticks longer (legato overlap). Bends, slides, vibrato: not exported yet.
  *   Neck position: a Text meta event "s<string>f<fret>" (or "s<string>x") at each note's tick, before its note on.
@@ -14,7 +19,13 @@
  *   a track id = conductor + that track only, whatever its mute/solo. */
 (function (root) {
   'use strict';
-  var PPQ = 480, VEL = 96, VEL_MUTED = 30, VEL_LEGATO = 67, MUTED_TICKS = 60, LEGATO_OVERLAP = 10, PROGRAM = 25;
+  var PPQ = 480, VEL = 96, VEL_MUTED = 30, VEL_LEGATO = 67, MUTED_TICKS = 60, LEGATO_OVERLAP = 10;
+  // Sound -> GM program (1-based, as in the GM spec; the byte written is program - 1) and octave (bass = -12).
+  var PROGRAMS = { nylon: 25, spanish: 25, clean: 28, upright: 33, ebass: 34 }, BASS = { upright: true, ebass: true };
+  var DEFAULT_TONE = 'nylon';
+  function toneOf(t) { return t && PROGRAMS[t.tone] ? t.tone : DEFAULT_TONE; }
+  function programOf(t) { return PROGRAMS[toneOf(t)]; }
+  function octaveOf(t) { return BASS[toneOf(t)] ? -12 : 0; }
 
   function vlq(n) {
     var out = [n & 0x7f];
@@ -53,12 +64,13 @@
     if (opts.suffix) name += opts.suffix;
     ev.push({ tick: 0, order: 0, sub: 0, data: meta(0x03, utf8(name)) });
     ev.push({ tick: 0, order: 0, sub: 1, data: meta(0x04, utf8((t.tuning.name || 'Custom') + ' [' + t.tuning.midi.join(' ') + ']')) });
-    ev.push({ tick: 0, order: 0, sub: 2, data: [0xc0 | ch, PROGRAM] });
+    ev.push({ tick: 0, order: 0, sub: 2, data: [0xc0 | ch, programOf(t) - 1] });
     ev.push({ tick: 0, order: 0, sub: 3, data: [0xb0 | ch, 7, Math.round((t.volume == null ? 80 : t.volume) * 127 / 100)] });
+    var oct = octaveOf(t);
     var notes = t.notes.slice().sort(function (a, b) { return a.startTick - b.startTick || b.string - a.string; });
     var spans = notes.map(function (n) {
       var muted = n.fret === null;
-      var pitch = t.tuning.midi[n.string - 1] + (muted ? 0 : n.fret);
+      var pitch = Math.max(0, t.tuning.midi[n.string - 1] + (muted ? 0 : n.fret) + oct);
       var len = muted ? Math.min(MUTED_TICKS, n.durationTicks || MUTED_TICKS) : Math.max(1, n.durationTicks || 1);
       var vel = muted ? VEL_MUTED : hasTech(n, 'hammer-on', 'pull-off') ? VEL_LEGATO : VEL;
       return { n: n, pitch: pitch, on: n.startTick, off: n.startTick + len, vel: vel, muted: muted };
@@ -119,6 +131,7 @@
   function clean(s) { return String(s || '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80); }
   function fileName(p, t) { var base = clean(p.title) || 'Untitled'; return (t ? base + ' - ' + (clean(t.name) || 'Track') : base) + '.mid'; }
 
-  var api = { build: build, fileName: fileName, vlq: vlq, PPQ: PPQ, VEL: VEL, VEL_MUTED: VEL_MUTED, VEL_LEGATO: VEL_LEGATO, MUTED_TICKS: MUTED_TICKS, LEGATO_OVERLAP: LEGATO_OVERLAP, PROGRAM: PROGRAM };
+  var api = { build: build, fileName: fileName, vlq: vlq, PPQ: PPQ, VEL: VEL, VEL_MUTED: VEL_MUTED, VEL_LEGATO: VEL_LEGATO, MUTED_TICKS: MUTED_TICKS, LEGATO_OVERLAP: LEGATO_OVERLAP,
+    PROGRAMS: PROGRAMS, programOf: programOf, octaveOf: octaveOf, PROGRAM: PROGRAMS[DEFAULT_TONE] };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.TabMidi = api;
 })(this);
